@@ -1,0 +1,240 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Art-du-Kivu - Brand Design System */
+/* Colors extracted from logo: Navy Blue (#1C2541) and Red (#E63946) */
+:root {
+  /* Light backgrounds */
+  --background: #f8f9fa;
+  --foreground: #1c2541;
+  --card: #ffffff;
+  --card-foreground: #1c2541;
+  --popover: #ffffff;
+  --popover-foreground: #1c2541;
+
+  /* Brand primary - Red from logo */
+  --primary: #e63946;
+  --primary-foreground: #ffffff;
+
+  /* Secondary - Navy blue from logo */
+  --secondary: #1c2541;
+  --secondary-foreground: #ffffff;
+
+  --muted: #e9ecef;
+  --muted-foreground: #6c757d;
+
+  /* Accent - Lighter red */
+  --accent: #ff6b6b;
+  --accent-foreground: #ffffff;
+
+  /* Status colors */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #059669;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #1c2541;
+  --info: #0284c7;
+  --info-foreground: #ffffff;
+
+  /* Borders and inputs */
+  --border: #dee2e6;
+  --input: #dee2e6;
+  --ring: #e63946;
+
+  /* Charts - Brand palette */
+  --chart-1: #e63946;
+  --chart-2: #1c2541;
+  --chart-3: #0284c7;
+  --chart-4: #059669;
+  --chart-5: #ff6b6b;
+
+  --radius: 0.75rem;
+
+  /* Sidebar - Navy blue from logo */
+  --sidebar: #1c2541;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #e63946;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2d3a5c;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2d3a5c;
+  --sidebar-ring: #e63946;
+  --sidebar-muted: #a0aec0;
+}
+
+.dark {
+  --background: #0f1629;
+  --foreground: #f8f9fa;
+  --card: #1c2541;
+  --card-foreground: #f8f9fa;
+  --popover: #1c2541;
+  --popover-foreground: #f8f9fa;
+  --primary: #e63946;
+  --primary-foreground: #ffffff;
+  --secondary: #2d3a5c;
+  --secondary-foreground: #f8f9fa;
+  --muted: #2d3a5c;
+  --muted-foreground: #a0aec0;
+  --accent: #ff6b6b;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #059669;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #1c2541;
+  --info: #0284c7;
+  --info-foreground: #ffffff;
+  --border: #2d3a5c;
+  --input: #2d3a5c;
+  --ring: #e63946;
+  --chart-1: #e63946;
+  --chart-2: #4a90d9;
+  --chart-3: #0ea5e9;
+  --chart-4: #10b981;
+  --chart-5: #ff6b6b;
+  --sidebar: #0f1629;
+  --sidebar-foreground: #f8f9fa;
+  --sidebar-primary: #e63946;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1c2541;
+  --sidebar-accent-foreground: #f8f9fa;
+  --sidebar-border: #2d3a5c;
+  --sidebar-ring: #e63946;
+  --sidebar-muted: #a0aec0;
+}
+
+@theme inline {
+  --font-sans: "DM Sans", "DM Sans Fallback", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "JetBrains Mono Fallback", monospace;
+  --font-display: "Archivo Black", "Archivo Black Fallback", sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-muted: var(--sidebar-muted);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* Geometric pattern for sidebar */
+.african-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L60 30L30 60L0 30z' fill='%23E63946' fill-opacity='0.03'/%3E%3C/svg%3E");
+  background-size: 30px 30px;
+}
+
+/* Smooth transitions */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Glow effect for active elements */
+.glow-primary {
+  box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.1);
+}
+
+/* Card elevation */
+.card-shadow {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.card-shadow-elevated {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Watermark background with logo */
+.watermark-bg {
+  position: relative;
+}
+
+.watermark-bg::before {
+  content: "";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  height: 500px;
+  background-image: url("/logo.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure content stays above watermark */
+.watermark-bg > * {
+  position: relative;
+  z-index: 1;
+}
