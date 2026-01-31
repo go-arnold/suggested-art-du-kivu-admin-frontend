@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import Image from "next/image"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   FileText,
@@ -20,14 +20,19 @@ import {
   Mic2,
   Radio,
   LogOut,
-} from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+} from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+} from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const menuItems = [
   {
@@ -61,34 +66,34 @@ const menuItems = [
     href: "/admin/parametres",
     icon: Settings,
   },
-]
+];
 
 interface AdminSidebarProps {
-  collapsed: boolean
-  onToggle: () => void
+  collapsed: boolean;
+  onToggle: () => void;
 }
 
 export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
-  const pathname = usePathname()
-  const [openMenus, setOpenMenus] = useState<string[]>(["Contenu"])
+  const pathname = usePathname();
+  const [openMenus, setOpenMenus] = useState<string[]>(["Contenu"]);
 
   const toggleMenu = (title: string) => {
     setOpenMenus((prev) =>
-      prev.includes(title) ? prev.filter((t) => t !== title) : [...prev, title]
-    )
-  }
+      prev.includes(title) ? prev.filter((t) => t !== title) : [...prev, title],
+    );
+  };
 
   const isActive = (href: string) => {
-    if (href === "/admin") return pathname === "/admin"
-    return pathname.startsWith(href)
-  }
+    if (href === "/admin") return pathname === "/admin";
+    return pathname.startsWith(href);
+  };
 
   return (
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
           "fixed left-0 top-0 z-40 flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 african-pattern",
-          collapsed ? "w-20" : "w-[280px]"
+          collapsed ? "w-20" : "w-[280px]",
         )}
       >
         {/* Logo */}
@@ -96,10 +101,10 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
           {!collapsed && (
             <Link href="/admin" className="flex items-center gap-3 group">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white p-1.5 transition-transform group-hover:scale-105">
-                <Image 
-                  src="/logo.png" 
-                  alt="Art-du-Kivu" 
-                  width={40} 
+                <Image
+                  src="/logo.png"
+                  alt="Art-du-Kivu"
+                  width={40}
                   height={40}
                   className="object-contain"
                 />
@@ -108,17 +113,19 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                 <span className="font-display text-lg leading-tight text-sidebar-foreground">
                   Art-du-Kivu
                 </span>
-                <span className="text-xs text-sidebar-muted">Administration</span>
+                <span className="text-xs text-sidebar-muted">
+                  Administration
+                </span>
               </div>
             </Link>
           )}
           {collapsed && (
             <Link href="/admin" className="mx-auto">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5">
-                <Image 
-                  src="/logo.png" 
-                  alt="Art-du-Kivu" 
-                  width={36} 
+                <Image
+                  src="/logo.png"
+                  alt="Art-du-Kivu"
+                  width={36}
                   height={36}
                   className="object-contain"
                 />
@@ -131,20 +138,25 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="space-y-1">
             {menuItems.map((item) => {
-              const Icon = item.icon
-              const hasSubmenu = !!item.submenu
-              const isOpen = openMenus.includes(item.title)
-              const active = item.href ? isActive(item.href) : item.submenu?.some((sub) => isActive(sub.href))
+              const Icon = item.icon;
+              const hasSubmenu = !!item.submenu;
+              const isOpen = openMenus.includes(item.title);
+              const active = item.href
+                ? isActive(item.href)
+                : item.submenu?.some((sub) => isActive(sub.href));
 
               if (hasSubmenu && !collapsed) {
                 return (
                   <li key={item.title}>
-                    <Collapsible open={isOpen} onOpenChange={() => toggleMenu(item.title)}>
+                    <Collapsible
+                      open={isOpen}
+                      onOpenChange={() => toggleMenu(item.title)}
+                    >
                       <CollapsibleTrigger asChild>
                         <button
                           className={cn(
                             "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-smooth hover:bg-sidebar-accent",
-                            active && "text-primary"
+                            active && "text-primary",
                           )}
                         >
                           <Icon className="h-5 w-5 shrink-0" />
@@ -152,7 +164,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                           <ChevronDown
                             className={cn(
                               "h-4 w-4 transition-transform duration-200",
-                              isOpen && "rotate-180"
+                              isOpen && "rotate-180",
                             )}
                           />
                         </button>
@@ -160,8 +172,8 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                       <CollapsibleContent className="pt-1">
                         <ul className="ml-4 space-y-1 border-l border-sidebar-border pl-4">
                           {item.submenu?.map((subItem) => {
-                            const SubIcon = subItem.icon
-                            const subActive = isActive(subItem.href)
+                            const SubIcon = subItem.icon;
+                            const subActive = isActive(subItem.href);
                             return (
                               <li key={subItem.href}>
                                 <Link
@@ -170,7 +182,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-smooth hover:bg-sidebar-accent",
                                     subActive
                                       ? "bg-primary/10 text-primary font-medium"
-                                      : "text-sidebar-muted hover:text-sidebar-foreground"
+                                      : "text-sidebar-muted hover:text-sidebar-foreground",
                                   )}
                                 >
                                   <SubIcon className="h-4 w-4" />
@@ -180,13 +192,13 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                                   )}
                                 </Link>
                               </li>
-                            )
+                            );
                           })}
                         </ul>
                       </CollapsibleContent>
                     </Collapsible>
                   </li>
-                )
+                );
               }
 
               if (collapsed) {
@@ -200,7 +212,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                             "flex h-11 w-11 items-center justify-center rounded-lg transition-smooth hover:bg-sidebar-accent mx-auto",
                             active
                               ? "bg-primary/10 text-primary"
-                              : "text-sidebar-muted hover:text-sidebar-foreground"
+                              : "text-sidebar-muted hover:text-sidebar-foreground",
                           )}
                         >
                           <Icon className="h-5 w-5" />
@@ -211,7 +223,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                       </TooltipContent>
                     </Tooltip>
                   </li>
-                )
+                );
               }
 
               return (
@@ -222,7 +234,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                       "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-smooth hover:bg-sidebar-accent",
                       active
                         ? "bg-primary/10 text-primary"
-                        : "text-sidebar-muted hover:text-sidebar-foreground"
+                        : "text-sidebar-muted hover:text-sidebar-foreground",
                     )}
                   >
                     {active && (
@@ -232,7 +244,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                     <span>{item.title}</span>
                   </Link>
                 </li>
-              )
+              );
             })}
           </ul>
         </nav>
@@ -248,8 +260,10 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Jean Dupont</p>
-                <p className="text-xs text-sidebar-muted truncate">Administrateur</p>
+                <p className="text-sm font-medium truncate">Jeremy Matabaro</p>
+                <p className="text-xs text-sidebar-muted truncate">
+                  Administrateur
+                </p>
               </div>
               <LogOut className="h-4 w-4 text-sidebar-muted group-hover:text-sidebar-foreground transition-colors" />
             </div>
@@ -266,7 +280,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                Jean Dupont - Administrateur
+                Jeremy Matabaro - Administrateur
               </TooltipContent>
             </Tooltip>
           )}
@@ -285,5 +299,5 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
         </button>
       </aside>
     </TooltipProvider>
-  )
+  );
 }

@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import React from "react"
+import React from "react";
 
-import { useState } from "react"
-import Link from "next/link"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   Save,
@@ -22,29 +22,36 @@ import {
   Code,
   Heading1,
   Heading2,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/ui/popover";
 
-const categories = ["Culture", "Événements", "Artistes", "Guides", "Musique", "Art"]
-const authors = ["Jean Dupont", "Marie K.", "Sophie M.", "Admin"]
+const categories = [
+  "Culture",
+  "Événements",
+  "Artistes",
+  "Guides",
+  "Musique",
+  "Art",
+];
+const authors = ["Jeremy Matabaro", "Marie K.", "Sophie M.", "Admin"];
 
 const editorTools = [
   { icon: Bold, label: "Gras" },
@@ -57,37 +64,39 @@ const editorTools = [
   { icon: LinkIcon, label: "Lien" },
   { icon: ImageIcon, label: "Image" },
   { icon: Code, label: "Code" },
-]
+];
 
 export default function NewArticlePage() {
-  const [title, setTitle] = useState("")
-  const [content, setContent] = useState("")
-  const [category, setCategory] = useState("")
-  const [author, setAuthor] = useState("")
-  const [tags, setTags] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState("")
-  const [featuredImage, setFeaturedImage] = useState<string | null>(null)
-  const [status, setStatus] = useState<"draft" | "published" | "scheduled">("draft")
-  const [scheduleDate, setScheduleDate] = useState<Date | undefined>()
-  const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [category, setCategory] = useState("");
+  const [author, setAuthor] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [featuredImage, setFeaturedImage] = useState<string | null>(null);
+  const [status, setStatus] = useState<"draft" | "published" | "scheduled">(
+    "draft",
+  );
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>();
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
   const addTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()])
-      setTagInput("")
+      setTags([...tags, tagInput.trim()]);
+      setTagInput("");
     }
-  }
+  };
 
   const removeTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove))
-  }
+    setTags(tags.filter((tag) => tag !== tagToRemove));
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      e.preventDefault()
-      addTag()
+      e.preventDefault();
+      addTag();
     }
-  }
+  };
 
   return (
     <div className="space-y-6">
@@ -143,7 +152,7 @@ export default function NewArticlePage() {
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-1 border-b border-border p-2">
               {editorTools.map((tool, index) => {
-                const Icon = tool.icon
+                const Icon = tool.icon;
                 return (
                   <Button
                     key={tool.label}
@@ -152,13 +161,13 @@ export default function NewArticlePage() {
                     className={cn(
                       "h-8 w-8",
                       index === 3 && "ml-2",
-                      index === 6 && "ml-2"
+                      index === 6 && "ml-2",
                     )}
                     title={tool.label}
                   >
                     <Icon className="h-4 w-4" />
                   </Button>
-                )
+                );
               })}
             </div>
 
@@ -177,17 +186,22 @@ export default function NewArticlePage() {
           {/* Status */}
           <div className="rounded-xl bg-card p-6 card-shadow">
             <h3 className="font-semibold text-foreground mb-4">Publication</h3>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Statut</Label>
-                <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+                <Select
+                  value={status}
+                  onValueChange={(v) => setStatus(v as typeof status)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="draft">Brouillon</SelectItem>
-                    <SelectItem value="published">Publier immédiatement</SelectItem>
+                    <SelectItem value="published">
+                      Publier immédiatement
+                    </SelectItem>
                     <SelectItem value="scheduled">Programmer</SelectItem>
                   </SelectContent>
                 </Select>
@@ -196,9 +210,15 @@ export default function NewArticlePage() {
               {status === "scheduled" && (
                 <div className="space-y-2">
                   <Label>Date de publication</Label>
-                  <Popover open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
+                  <Popover
+                    open={isScheduleOpen}
+                    onOpenChange={setIsScheduleOpen}
+                  >
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start bg-transparent">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start bg-transparent"
+                      >
                         {scheduleDate
                           ? scheduleDate.toLocaleDateString("fr-FR")
                           : "Sélectionner une date"}
@@ -209,8 +229,8 @@ export default function NewArticlePage() {
                         mode="single"
                         selected={scheduleDate}
                         onSelect={(date) => {
-                          setScheduleDate(date)
-                          setIsScheduleOpen(false)
+                          setScheduleDate(date);
+                          setIsScheduleOpen(false);
                         }}
                         disabled={(date) => date < new Date()}
                       />
@@ -239,8 +259,10 @@ export default function NewArticlePage() {
 
           {/* Featured Image */}
           <div className="rounded-xl bg-card p-6 card-shadow">
-            <h3 className="font-semibold text-foreground mb-4">Image à la Une</h3>
-            
+            <h3 className="font-semibold text-foreground mb-4">
+              Image à la Une
+            </h3>
+
             {featuredImage ? (
               <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
                 <img
@@ -260,7 +282,9 @@ export default function NewArticlePage() {
             ) : (
               <div
                 className="flex aspect-video cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors"
-                onClick={() => setFeaturedImage("/placeholder.svg?height=400&width=600")}
+                onClick={() =>
+                  setFeaturedImage("/placeholder.svg?height=400&width=600")
+                }
               >
                 <Upload className="h-8 w-8 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
@@ -273,7 +297,7 @@ export default function NewArticlePage() {
           {/* Category */}
           <div className="rounded-xl bg-card p-6 card-shadow">
             <h3 className="font-semibold text-foreground mb-4">Catégorie</h3>
-            
+
             <Select value={category} onValueChange={setCategory}>
               <SelectTrigger>
                 <SelectValue placeholder="Sélectionner une catégorie" />
@@ -291,7 +315,7 @@ export default function NewArticlePage() {
           {/* Tags */}
           <div className="rounded-xl bg-card p-6 card-shadow">
             <h3 className="font-semibold text-foreground mb-4">Tags</h3>
-            
+
             <div className="flex gap-2">
               <Input
                 placeholder="Ajouter un tag..."
@@ -324,7 +348,7 @@ export default function NewArticlePage() {
           {/* SEO Options */}
           <div className="rounded-xl bg-card p-6 card-shadow">
             <h3 className="font-semibold text-foreground mb-4">Options SEO</h3>
-            
+
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -335,9 +359,9 @@ export default function NewArticlePage() {
                 </div>
                 <Switch />
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Autoriser les commentaires</Label>
@@ -352,5 +376,5 @@ export default function NewArticlePage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

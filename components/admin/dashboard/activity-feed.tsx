@@ -1,20 +1,27 @@
-"use client"
+"use client";
 
-import { cn } from "@/lib/utils"
-import { FileText, Star, Heart, MessageSquare, Type as type, LucideIcon } from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { cn } from "@/lib/utils";
+import {
+  FileText,
+  Star,
+  Heart,
+  MessageSquare,
+  Type as type,
+  LucideIcon,
+} from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface Activity {
-  id: string
-  type: "publication" | "artist" | "like" | "comment"
-  title: string
-  description: string
-  timestamp: string
+  id: string;
+  type: "publication" | "artist" | "like" | "comment";
+  title: string;
+  description: string;
+  timestamp: string;
   user?: {
-    name: string
-    avatar?: string
-    initials: string
-  }
+    name: string;
+    avatar?: string;
+    initials: string;
+  };
 }
 
 const activityIcons: Record<Activity["type"], LucideIcon> = {
@@ -22,23 +29,23 @@ const activityIcons: Record<Activity["type"], LucideIcon> = {
   artist: Star,
   like: Heart,
   comment: MessageSquare,
-}
+};
 
 const activityColors: Record<Activity["type"], string> = {
   publication: "bg-info/10 text-info",
   artist: "bg-warning/10 text-warning",
   like: "bg-destructive/10 text-destructive",
   comment: "bg-success/10 text-success",
-}
+};
 
 const activities: Activity[] = [
   {
     id: "1",
     type: "publication",
     title: "Nouvel article publié",
-    description: "\"Les rythmes du Kivu\" a été publié avec succès",
+    description: '"Les rythmes du Kivu" a été publié avec succès',
     timestamp: "Il y a 5 min",
-    user: { name: "Jean Dupont", initials: "JD" },
+    user: { name: "Jeremy Matabaro", initials: "JD" },
   },
   {
     id: "2",
@@ -52,7 +59,7 @@ const activities: Activity[] = [
     id: "3",
     type: "like",
     title: "Nouveau like",
-    description: "\"Concert de Goma\" a reçu 25 nouveaux likes",
+    description: '"Concert de Goma" a reçu 25 nouveaux likes',
     timestamp: "Il y a 2h",
   },
   {
@@ -66,11 +73,11 @@ const activities: Activity[] = [
     id: "5",
     type: "publication",
     title: "Article mis à jour",
-    description: "\"Festival Amani 2026\" a été modifié",
+    description: '"Festival Amani 2026" a été modifié',
     timestamp: "Il y a 4h",
     user: { name: "Sophie M.", initials: "SM" },
   },
-]
+];
 
 export function ActivityFeed() {
   return (
@@ -84,22 +91,22 @@ export function ActivityFeed() {
 
       <div className="mt-6 space-y-1">
         {activities.map((activity, index) => {
-          const Icon = activityIcons[activity.type]
-          const colorClass = activityColors[activity.type]
+          const Icon = activityIcons[activity.type];
+          const colorClass = activityColors[activity.type];
 
           return (
             <div
               key={activity.id}
               className={cn(
                 "group relative flex items-start gap-4 rounded-lg p-3 transition-smooth hover:bg-muted/50",
-                index !== activities.length - 1 && "border-b border-border/50"
+                index !== activities.length - 1 && "border-b border-border/50",
               )}
             >
               {/* Timeline dot */}
               <div
                 className={cn(
                   "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                  colorClass
+                  colorClass,
                 )}
               >
                 <Icon className="h-5 w-5" />
@@ -119,7 +126,9 @@ export function ActivityFeed() {
                   {activity.user && (
                     <>
                       <Avatar className="h-5 w-5">
-                        <AvatarImage src={activity.user.avatar || "/placeholder.svg"} />
+                        <AvatarImage
+                          src={activity.user.avatar || "/placeholder.svg"}
+                        />
                         <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
                           {activity.user.initials}
                         </AvatarFallback>
@@ -136,7 +145,7 @@ export function ActivityFeed() {
                 </div>
               </div>
             </div>
-          )
+          );
         })}
       </div>
 
@@ -144,5 +153,5 @@ export function ActivityFeed() {
         Voir toutes les activités
       </button>
     </div>
-  )
+  );
 }
