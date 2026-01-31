@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   Bell,
   Search,
@@ -16,9 +16,9 @@ import {
   MessageSquare,
   Heart,
   UserPlus,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,9 +26,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const notifications = [
   {
@@ -52,13 +52,17 @@ const notifications = [
     time: "Il y a 2h",
     icon: UserPlus,
   },
-]
+];
 
 const quickActions = [
   { label: "Nouvel Article", href: "/admin/articles/nouveau", icon: FileText },
   { label: "Nouvel Artiste", href: "/admin/artistes/nouveau", icon: Music },
-  { label: "Nouvel Événement", href: "/admin/evenements/nouveau", icon: Calendar },
-]
+  {
+    label: "Nouvel Événement",
+    href: "/admin/evenements/nouveau",
+    icon: Calendar,
+  },
+];
 
 const breadcrumbMap: Record<string, string> = {
   admin: "Dashboard",
@@ -72,36 +76,38 @@ const breadcrumbMap: Record<string, string> = {
   parametres: "Paramètres",
   nouveau: "Nouveau",
   modifier: "Modifier",
-}
+};
 
 interface AdminNavbarProps {
-  sidebarCollapsed: boolean
+  sidebarCollapsed: boolean;
 }
 
 export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
-  const pathname = usePathname()
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
+  const pathname = usePathname();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const pathSegments = pathname.split("/").filter(Boolean)
+  const pathSegments = pathname.split("/").filter(Boolean);
   const breadcrumbs = pathSegments.map((segment, index) => {
-    const href = `/${pathSegments.slice(0, index + 1).join("/")}`
-    const label = breadcrumbMap[segment] || segment
-    return { href, label, isLast: index === pathSegments.length - 1 }
-  })
+    const href = `/${pathSegments.slice(0, index + 1).join("/")}`;
+    const label = breadcrumbMap[segment] || segment;
+    return { href, label, isLast: index === pathSegments.length - 1 };
+  });
 
   return (
     <header
       className={cn(
         "fixed right-0 top-0 z-30 flex h-[72px] items-center justify-between border-b border-border bg-background/80 backdrop-blur-sm px-6 transition-all duration-300",
-        sidebarCollapsed ? "left-20" : "left-[280px]"
+        sidebarCollapsed ? "left-20" : "left-[280px]",
       )}
     >
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-1 text-sm">
         {breadcrumbs.map((crumb, index) => (
           <div key={crumb.href} className="flex items-center gap-1">
-            {index > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            {index > 0 && (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            )}
             {crumb.isLast ? (
               <span className="font-medium text-foreground">{crumb.label}</span>
             ) : (
@@ -135,8 +141,8 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
                 size="icon"
                 className="h-9 w-9"
                 onClick={() => {
-                  setSearchOpen(false)
-                  setSearchQuery("")
+                  setSearchOpen(false);
+                  setSearchQuery("");
                 }}
               >
                 <X className="h-4 w-4" />
@@ -167,7 +173,10 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
             <DropdownMenuSeparator />
             {quickActions.map((action) => (
               <DropdownMenuItem key={action.href} asChild>
-                <Link href={action.href} className="flex items-center gap-2 cursor-pointer">
+                <Link
+                  href={action.href}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
                   <action.icon className="h-4 w-4" />
                   {action.label}
                 </Link>
@@ -192,13 +201,20 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
               Notifications
-              <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-primary hover:text-primary/80">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0 text-xs text-primary hover:text-primary/80"
+              >
                 Tout marquer comme lu
               </Button>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {notifications.map((notif) => (
-              <DropdownMenuItem key={notif.id} className="flex items-start gap-3 p-3 cursor-pointer">
+              <DropdownMenuItem
+                key={notif.id}
+                className="flex items-start gap-3 p-3 cursor-pointer"
+              >
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <notif.icon className="h-4 w-4" />
                 </div>
@@ -210,7 +226,10 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/admin/notifications" className="w-full text-center text-sm text-primary cursor-pointer">
+              <Link
+                href="/admin/notifications"
+                className="w-full text-center text-sm text-primary cursor-pointer"
+              >
                 Voir toutes les notifications
               </Link>
             </DropdownMenuItem>
@@ -224,10 +243,10 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
               <Avatar className="h-7 w-7">
                 <AvatarImage src="/placeholder-avatar.jpg" alt="Admin" />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  JD
+                  JM
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden md:inline text-sm font-medium">Jean</span>
+              <span className="hidden md:inline text-sm font-medium">Jeremy</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -236,10 +255,12 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
             <DropdownMenuItem>Profil</DropdownMenuItem>
             <DropdownMenuItem>Paramètres</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">Déconnexion</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive">
+              Déconnexion
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </header>
-  )
+  );
 }

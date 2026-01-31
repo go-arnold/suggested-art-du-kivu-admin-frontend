@@ -45,7 +45,7 @@ const activities: Activity[] = [
     title: "Nouvel article publié",
     description: '"Les rythmes du Kivu" a été publié avec succès',
     timestamp: "Il y a 5 min",
-    user: { name: "Jeremy Matabaro", initials: "JD" },
+    user: { name: "Jeremy Matabaro", initials: "JM" },
   },
   {
     id: "2",

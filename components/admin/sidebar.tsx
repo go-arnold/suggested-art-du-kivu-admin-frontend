@@ -256,7 +256,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
               <Avatar className="h-10 w-10 border-2 border-primary/20">
                 <AvatarImage src="/placeholder-avatar.jpg" alt="Admin" />
                 <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                  JD
+                  JM
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
@@ -274,7 +274,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
                   <Avatar className="h-9 w-9 border-2 border-primary/20">
                     <AvatarImage src="/placeholder-avatar.jpg" alt="Admin" />
                     <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
-                      JD
+                      JM
                     </AvatarFallback>
                   </Avatar>
                 </button>
