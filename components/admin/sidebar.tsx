@@ -48,7 +48,7 @@ const menuItems = [
       { title: "Artistes", href: "/admin/artistes", icon: Music },
       { title: "Événements", href: "/admin/evenements", icon: Calendar },
       { title: "Podcasts", href: "/admin/podcasts", icon: Mic2 },
-      { title: "Émissions Live", href: "/admin/live", icon: Radio },
+      { title: "Émissions Live", href: "/admin/emissions", icon: Radio },
     ],
   },
   {
