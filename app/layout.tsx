@@ -2,6 +2,7 @@ import React from "react"
 import type { Metadata } from 'next'
 import { DM_Sans, JetBrains_Mono, Archivo_Black } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const dmSans = DM_Sans({ 
@@ -52,6 +53,7 @@ export default function RootLayout({
     <html lang="fr">
       <body className={`${dmSans.variable} ${jetbrainsMono.variable} ${archivoBlack.variable} font-sans antialiased`}>
         {children}
+        <Toaster richColors position="top-right" />
         <Analytics />
       </body>
     </html>
