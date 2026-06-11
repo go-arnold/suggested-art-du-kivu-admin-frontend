@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Image from "next/image"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import Image from "next/image";
+import { cn } from "@/lib/utils";
 import {
   Settings,
   Palette,
@@ -14,29 +14,29 @@ import {
   Mail,
   Save,
   RefreshCw,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { toast } from "sonner"
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 export default function ParametresPage() {
-  const [activeTab, setActiveTab] = useState("general")
+  const [activeTab, setActiveTab] = useState("general");
 
   const handleSave = () => {
-    toast.success("Paramètres sauvegardés avec succès")
-  }
+    toast.success("Paramètres sauvegardés avec succès");
+  };
 
   return (
     <div className="space-y-6">
@@ -57,7 +57,11 @@ export default function ParametresPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-6"
+      >
         <TabsList className="bg-card card-shadow p-1 h-auto flex-wrap">
           <TabsTrigger
             value="general"
@@ -275,7 +279,7 @@ export default function ParametresPage() {
                         "flex h-12 w-12 items-center justify-center rounded-xl border-2 transition-all hover:scale-105",
                         option.color === "#D97706"
                           ? "border-foreground ring-2 ring-offset-2 ring-primary"
-                          : "border-transparent"
+                          : "border-transparent",
                       )}
                       style={{ backgroundColor: option.color }}
                       title={option.name}
@@ -327,14 +331,18 @@ export default function ParametresPage() {
                   AK
                 </div>
                 <div>
-                  <h4 className="font-display text-xl font-bold">Art-du-Kivu</h4>
+                  <h4 className="font-display text-xl font-bold">
+                    Art-du-Kivu
+                  </h4>
                   <p className="text-sm text-muted-foreground">
                     Promotion des talents artistiques
                   </p>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Voici un aperçu de l{"'"}apparence de votre site avec les paramètres actuels. Les modifications seront visibles immédiatement après la sauvegarde.
+                Voici un aperçu de l{"'"}apparence de votre site avec les
+                paramètres actuels. Les modifications seront visibles
+                immédiatement après la sauvegarde.
               </p>
               <div className="mt-4 flex gap-2">
                 <Button size="sm">Bouton Principal</Button>
@@ -507,7 +515,7 @@ export default function ParametresPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                 <div>
-                  <p className="font-medium">Jean Dupont</p>
+                  <p className="font-medium">Jeremy Matabaro</p>
                   <p className="text-sm text-muted-foreground">
                     192.168.1.1 · Chrome · Windows
                   </p>
@@ -668,5 +676,5 @@ export default function ParametresPage() {
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }

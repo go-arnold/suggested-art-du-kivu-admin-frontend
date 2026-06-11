@@ -39,7 +39,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { RichTextEditor } from "@/components/admin/rich-text-editor"
 
 const categories = ["Culture", "Événements", "Artistes", "Guides", "Musique", "Art"]
-const authors = ["Jean Dupont", "Marie K.", "Sophie M.", "Admin"]
+const authors = ["Jeremy Matabaro", "Marie K.", "Sophie M.", "Admin"]
 
 export default function NewArticlePage() {
   const [title, setTitle] = useState("")

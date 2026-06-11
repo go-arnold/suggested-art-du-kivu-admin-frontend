@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import Image from "next/image"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { cn } from "@/lib/utils";
 import {
   Search,
   Plus,
@@ -15,25 +15,25 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -41,24 +41,24 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 
 interface Article {
-  id: string
-  title: string
-  author: string
-  category: string
-  status: "published" | "draft" | "scheduled"
-  views: number
-  date: string
-  thumbnail: string
+  id: string;
+  title: string;
+  author: string;
+  category: string;
+  status: "published" | "draft" | "scheduled";
+  views: number;
+  date: string;
+  thumbnail: string;
 }
 
 const articles: Article[] = [
   {
     id: "1",
     title: "Les rythmes traditionnels du Kivu",
-    author: "Jean Dupont",
+    author: "Jeremy Matabaro",
     category: "Culture",
     status: "published",
     views: 1234,
@@ -98,7 +98,7 @@ const articles: Article[] = [
   {
     id: "5",
     title: "L'art contemporain congolais",
-    author: "Jean Dupont",
+    author: "Jeremy Matabaro",
     category: "Culture",
     status: "published",
     views: 2341,
@@ -115,46 +115,46 @@ const articles: Article[] = [
     date: "2026-01-15",
     thumbnail: "/placeholder.svg?height=80&width=120",
   },
-]
+];
 
 const statusConfig = {
   published: { label: "Publié", className: "bg-success/10 text-success" },
   draft: { label: "Brouillon", className: "bg-muted text-muted-foreground" },
   scheduled: { label: "Programmé", className: "bg-info/10 text-info" },
-}
+};
 
 export default function ArticlesPage() {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
-  const [selectedArticles, setSelectedArticles] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [selectedArticles, setSelectedArticles] = useState<string[]>([]);
 
   const filteredArticles = articles.filter((article) => {
     const matchesSearch = article.title
       .toLowerCase()
-      .includes(searchQuery.toLowerCase())
+      .includes(searchQuery.toLowerCase());
     const matchesStatus =
-      statusFilter === "all" || article.status === statusFilter
+      statusFilter === "all" || article.status === statusFilter;
     const matchesCategory =
-      categoryFilter === "all" || article.category === categoryFilter
-    return matchesSearch && matchesStatus && matchesCategory
-  })
+      categoryFilter === "all" || article.category === categoryFilter;
+    return matchesSearch && matchesStatus && matchesCategory;
+  });
 
   const toggleSelectAll = () => {
     if (selectedArticles.length === filteredArticles.length) {
-      setSelectedArticles([])
+      setSelectedArticles([]);
     } else {
-      setSelectedArticles(filteredArticles.map((a) => a.id))
+      setSelectedArticles(filteredArticles.map((a) => a.id));
     }
-  }
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedArticles((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    )
-  }
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
+    );
+  };
 
-  const categories = [...new Set(articles.map((a) => a.category))]
+  const categories = [...new Set(articles.map((a) => a.category))];
 
   return (
     <div className="space-y-6">
@@ -257,13 +257,13 @@ export default function ArticlesPage() {
           </TableHeader>
           <TableBody>
             {filteredArticles.map((article) => {
-              const status = statusConfig[article.status]
+              const status = statusConfig[article.status];
               return (
                 <TableRow
                   key={article.id}
                   className={cn(
                     "group transition-colors",
-                    selectedArticles.includes(article.id) && "bg-primary/5"
+                    selectedArticles.includes(article.id) && "bg-primary/5",
                   )}
                 >
                   <TableCell>
@@ -348,7 +348,7 @@ export default function ArticlesPage() {
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              )
+              );
             })}
           </TableBody>
         </Table>
@@ -356,13 +356,18 @@ export default function ArticlesPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between border-t border-border px-4 py-3">
           <p className="text-sm text-muted-foreground">
-            Affichage de {filteredArticles.length} sur {articles.length} articles
+            Affichage de {filteredArticles.length} sur {articles.length}{" "}
+            articles
           </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" className="min-w-[40px] bg-transparent">
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-w-[40px] bg-transparent"
+            >
               1
             </Button>
             <Button variant="ghost" size="sm" className="min-w-[40px]">
@@ -378,5 +383,5 @@ export default function ArticlesPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
