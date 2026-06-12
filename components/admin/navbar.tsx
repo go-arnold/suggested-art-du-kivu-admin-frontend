@@ -13,6 +13,7 @@ import {
   Music,
   Calendar,
   X,
+  Menu,
   MessageSquare,
   Heart,
   UserPlus,
@@ -80,9 +81,13 @@ const breadcrumbMap: Record<string, string> = {
 
 interface AdminNavbarProps {
   sidebarCollapsed: boolean;
+  onMobileMenuOpen: () => void;
 }
 
-export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
+export function AdminNavbar({
+  sidebarCollapsed,
+  onMobileMenuOpen,
+}: AdminNavbarProps) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,33 +102,54 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
   return (
     <header
       className={cn(
-        "fixed right-0 top-0 z-30 flex h-[72px] items-center justify-between border-b border-border bg-background/80 backdrop-blur-sm px-6 transition-all duration-300",
-        sidebarCollapsed ? "left-20" : "left-[280px]",
+        "fixed right-0 top-0 z-30 flex h-[72px] items-center justify-between gap-2 border-b border-border bg-background/80 backdrop-blur-sm px-4 transition-all duration-300 lg:px-6 left-0",
+        sidebarCollapsed ? "lg:left-20" : "lg:left-[280px]",
       )}
     >
-      {/* Breadcrumbs */}
-      <nav className="flex items-center gap-1 text-sm">
-        {breadcrumbs.map((crumb, index) => (
-          <div key={crumb.href} className="flex items-center gap-1">
-            {index > 0 && (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            )}
-            {crumb.isLast ? (
-              <span className="font-medium text-foreground">{crumb.label}</span>
-            ) : (
-              <Link
-                href={crumb.href}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {crumb.label}
-              </Link>
-            )}
-          </div>
-        ))}
-      </nav>
+      {/* Hamburger (mobile/tablette) + Breadcrumbs */}
+      <div className="flex min-w-0 items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0 lg:hidden"
+          onClick={onMobileMenuOpen}
+          aria-label="Ouvrir le menu"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        <nav className="flex min-w-0 items-center gap-1 overflow-hidden text-sm">
+          {breadcrumbs.map((crumb, index) => (
+            <div
+              key={crumb.href}
+              className={cn(
+                "flex items-center gap-1",
+                // Sur très petit écran, on ne garde que le dernier niveau
+                !crumb.isLast && "hidden sm:flex",
+              )}
+            >
+              {index > 0 && (
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+              {crumb.isLast ? (
+                <span className="truncate font-medium text-foreground">
+                  {crumb.label}
+                </span>
+              ) : (
+                <Link
+                  href={crumb.href}
+                  className="whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {crumb.label}
+                </Link>
+              )}
+            </div>
+          ))}
+        </nav>
+      </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         {/* Search */}
         <div className="relative">
           {searchOpen ? (
@@ -133,7 +159,7 @@ export function AdminNavbar({ sidebarCollapsed }: AdminNavbarProps) {
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-64 h-9"
+                className="w-40 h-9 sm:w-64"
                 autoFocus
               />
               <Button

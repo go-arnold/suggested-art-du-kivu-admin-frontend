@@ -146,7 +146,7 @@ export default function NewArticlePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/admin/articles">
@@ -162,10 +162,11 @@ export default function NewArticlePage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setIsPreviewOpen(true)}>
             <Eye className="mr-2 h-4 w-4" />
-            Prévisualiser
+            <span className="hidden sm:inline">Prévisualiser</span>
+            <span className="sm:hidden">Aperçu</span>
           </Button>
           <Button variant="secondary" size="sm" onClick={handleSaveDraft}>
             <Save className="mr-2 h-4 w-4" />
