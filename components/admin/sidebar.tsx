@@ -20,6 +20,7 @@ import {
   Mic2,
   Radio,
   LogOut,
+  X,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -71,9 +72,16 @@ const menuItems = [
 interface AdminSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }
 
-export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
+export function AdminSidebar({
+  collapsed,
+  onToggle,
+  mobileOpen,
+  onMobileClose,
+}: AdminSidebarProps) {
   const pathname = usePathname();
   const [openMenus, setOpenMenus] = useState<string[]>(["Contenu"]);
 
@@ -90,10 +98,23 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
 
   return (
     <TooltipProvider delayDuration={0}>
+      {/* Voile sombre derrière le tiroir (mobile/tablette uniquement) */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          onClick={onMobileClose}
+          aria-hidden="true"
+        />
+      )}
+
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 african-pattern",
-          collapsed ? "w-20" : "w-[280px]",
+          "fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 african-pattern",
+          // Largeur repliée : desktop uniquement
+          collapsed ? "lg:w-20" : "lg:w-[280px]",
+          // Tiroir off-canvas sous lg, toujours visible à partir de lg
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          "lg:translate-x-0",
         )}
       >
         {/* Logo */}
@@ -132,6 +153,15 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
               </div>
             </Link>
           )}
+
+          {/* Fermeture du tiroir (mobile/tablette uniquement) */}
+          <button
+            onClick={onMobileClose}
+            aria-label="Fermer le menu"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-muted transition-smooth hover:bg-sidebar-accent hover:text-sidebar-foreground lg:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Navigation */}
@@ -286,10 +316,11 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
           )}
         </div>
 
-        {/* Collapse Toggle */}
+        {/* Collapse Toggle (desktop uniquement) */}
         <button
           onClick={onToggle}
-          className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110"
+          aria-label={collapsed ? "Déplier le menu" : "Replier le menu"}
+          className="absolute -right-3 top-20 hidden h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110 lg:flex"
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />

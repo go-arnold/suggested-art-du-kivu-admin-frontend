@@ -1,10 +1,8 @@
-"use client";
+"use client"
 
-import React from "react";
-
-import { useState } from "react";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
+import React, { useMemo, useRef, useState } from "react"
+import Link from "next/link"
+import { toast } from "sonner"
 import {
   ArrowLeft,
   Save,
@@ -12,96 +10,143 @@ import {
   Send,
   Upload,
   X,
-  Bold,
-  Italic,
-  List,
-  ListOrdered,
-  Link as LinkIcon,
-  ImageIcon as ImageIcon,
-  Quote,
-  Code,
-  Heading1,
-  Heading2,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Separator } from "@/components/ui/separator"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/ui/popover"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar"
+import { RichTextEditor } from "@/components/admin/rich-text-editor"
 
-const categories = [
-  "Culture",
-  "Événements",
-  "Artistes",
-  "Guides",
-  "Musique",
-  "Art",
-];
-const authors = ["Jeremy Matabaro", "Marie K.", "Sophie M.", "Admin"];
-
-const editorTools = [
-  { icon: Bold, label: "Gras" },
-  { icon: Italic, label: "Italique" },
-  { icon: Heading1, label: "Titre 1" },
-  { icon: Heading2, label: "Titre 2" },
-  { icon: List, label: "Liste" },
-  { icon: ListOrdered, label: "Liste numérotée" },
-  { icon: Quote, label: "Citation" },
-  { icon: LinkIcon, label: "Lien" },
-  { icon: ImageIcon, label: "Image" },
-  { icon: Code, label: "Code" },
-];
+const categories = ["Culture", "Événements", "Artistes", "Guides", "Musique", "Art"]
+const authors = ["Jeremy Matabaro", "Marie K.", "Sophie M.", "Admin"]
 
 export default function NewArticlePage() {
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [category, setCategory] = useState("");
-  const [author, setAuthor] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
-  const [featuredImage, setFeaturedImage] = useState<string | null>(null);
-  const [status, setStatus] = useState<"draft" | "published" | "scheduled">(
-    "draft",
-  );
-  const [scheduleDate, setScheduleDate] = useState<Date | undefined>();
-  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [title, setTitle] = useState("")
+  const [content, setContent] = useState("")
+  const [category, setCategory] = useState("")
+  const [author, setAuthor] = useState("")
+  const [tags, setTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState("")
+  const [featuredImage, setFeaturedImage] = useState<string | null>(null)
+  const [status, setStatus] = useState<"draft" | "published" | "scheduled">("draft")
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>()
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Nombre de mots à partir du HTML de l'éditeur (balises retirées).
+  const wordCount = useMemo(() => {
+    const text = content.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ")
+    const words = text.trim().split(/\s+/).filter(Boolean)
+    return words.length
+  }, [content])
 
   const addTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput("");
+    const value = tagInput.trim()
+    if (value && !tags.includes(value)) {
+      setTags([...tags, value])
     }
-  };
+    setTagInput("")
+  }
 
   const removeTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove));
-  };
+    setTags(tags.filter((tag) => tag !== tagToRemove))
+  }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleTagKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      e.preventDefault();
-      addTag();
+      e.preventDefault()
+      addTag()
     }
-  };
+  }
+
+  const handleImageUpload = (file: File | undefined) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setFeaturedImage(String(reader.result))
+    reader.readAsDataURL(file)
+  }
+
+  // Validation commune avant sauvegarde / publication.
+  const validate = (requireForPublish: boolean) => {
+    if (!title.trim()) {
+      toast.error("Le titre est requis")
+      return false
+    }
+    if (requireForPublish) {
+      if (!content.replace(/<[^>]*>/g, "").trim()) {
+        toast.error("Le contenu de l'article est vide")
+        return false
+      }
+      if (!category) {
+        toast.error("Veuillez sélectionner une catégorie")
+        return false
+      }
+      if (!author) {
+        toast.error("Veuillez sélectionner un auteur")
+        return false
+      }
+      if (status === "scheduled" && !scheduleDate) {
+        toast.error("Veuillez choisir une date de publication")
+        return false
+      }
+    }
+    return true
+  }
+
+  const buildArticle = () => ({
+    title,
+    content,
+    category,
+    author,
+    tags,
+    featuredImage,
+    status,
+    scheduleDate,
+  })
+
+  const handleSaveDraft = () => {
+    if (!validate(false)) return
+    console.log("[article] brouillon enregistré", buildArticle())
+    toast.success("Brouillon enregistré")
+  }
+
+  const handlePublish = () => {
+    if (!validate(true)) return
+    console.log("[article] publication", buildArticle())
+    toast.success(
+      status === "scheduled"
+        ? `Article programmé pour le ${scheduleDate?.toLocaleDateString("fr-FR")}`
+        : "Article publié avec succès"
+    )
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/admin/articles">
@@ -117,18 +162,19 @@ export default function NewArticlePage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setIsPreviewOpen(true)}>
             <Eye className="mr-2 h-4 w-4" />
-            Prévisualiser
+            <span className="hidden sm:inline">Prévisualiser</span>
+            <span className="sm:hidden">Aperçu</span>
           </Button>
-          <Button variant="secondary" size="sm">
+          <Button variant="secondary" size="sm" onClick={handleSaveDraft}>
             <Save className="mr-2 h-4 w-4" />
             Sauvegarder
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={handlePublish}>
             <Send className="mr-2 h-4 w-4" />
-            Publier
+            {status === "scheduled" ? "Programmer" : "Publier"}
           </Button>
         </div>
       </div>
@@ -148,37 +194,11 @@ export default function NewArticlePage() {
           </div>
 
           {/* Editor */}
-          <div className="rounded-xl bg-card card-shadow overflow-hidden">
-            {/* Toolbar */}
-            <div className="flex flex-wrap items-center gap-1 border-b border-border p-2">
-              {editorTools.map((tool, index) => {
-                const Icon = tool.icon;
-                return (
-                  <Button
-                    key={tool.label}
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-8 w-8",
-                      index === 3 && "ml-2",
-                      index === 6 && "ml-2",
-                    )}
-                    title={tool.label}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </Button>
-                );
-              })}
-            </div>
+          <RichTextEditor value={content} onChange={setContent} />
 
-            {/* Content Area */}
-            <Textarea
-              placeholder="Commencez à écrire votre article..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="min-h-[500px] resize-none border-0 rounded-none focus-visible:ring-0 p-6 text-base leading-relaxed"
-            />
-          </div>
+          <p className="text-right text-xs text-muted-foreground">
+            {wordCount} mot{wordCount > 1 ? "s" : ""}
+          </p>
         </div>
 
         {/* Sidebar Options */}
@@ -190,18 +210,13 @@ export default function NewArticlePage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Statut</Label>
-                <Select
-                  value={status}
-                  onValueChange={(v) => setStatus(v as typeof status)}
-                >
+                <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="draft">Brouillon</SelectItem>
-                    <SelectItem value="published">
-                      Publier immédiatement
-                    </SelectItem>
+                    <SelectItem value="published">Publier immédiatement</SelectItem>
                     <SelectItem value="scheduled">Programmer</SelectItem>
                   </SelectContent>
                 </Select>
@@ -210,15 +225,9 @@ export default function NewArticlePage() {
               {status === "scheduled" && (
                 <div className="space-y-2">
                   <Label>Date de publication</Label>
-                  <Popover
-                    open={isScheduleOpen}
-                    onOpenChange={setIsScheduleOpen}
-                  >
+                  <Popover open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start bg-transparent"
-                      >
+                      <Button variant="outline" className="w-full justify-start bg-transparent">
                         {scheduleDate
                           ? scheduleDate.toLocaleDateString("fr-FR")
                           : "Sélectionner une date"}
@@ -229,8 +238,8 @@ export default function NewArticlePage() {
                         mode="single"
                         selected={scheduleDate}
                         onSelect={(date) => {
-                          setScheduleDate(date);
-                          setIsScheduleOpen(false);
+                          setScheduleDate(date)
+                          setIsScheduleOpen(false)
                         }}
                         disabled={(date) => date < new Date()}
                       />
@@ -259,16 +268,22 @@ export default function NewArticlePage() {
 
           {/* Featured Image */}
           <div className="rounded-xl bg-card p-6 card-shadow">
-            <h3 className="font-semibold text-foreground mb-4">
-              Image à la Une
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">Image à la Une</h3>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => handleImageUpload(e.target.files?.[0])}
+            />
 
             {featuredImage ? (
               <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
                 <img
-                  src={featuredImage || "/placeholder.svg"}
-                  alt="Featured"
-                  className="object-cover"
+                  src={featuredImage}
+                  alt="Aperçu de l'image à la une"
+                  className="h-full w-full object-cover"
                 />
                 <Button
                   variant="destructive"
@@ -282,9 +297,7 @@ export default function NewArticlePage() {
             ) : (
               <div
                 className="flex aspect-video cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors"
-                onClick={() =>
-                  setFeaturedImage("/placeholder.svg?height=400&width=600")
-                }
+                onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="h-8 w-8 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
@@ -321,7 +334,7 @@ export default function NewArticlePage() {
                 placeholder="Ajouter un tag..."
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={handleTagKeyDown}
               />
               <Button variant="secondary" onClick={addTag}>
                 Ajouter
@@ -375,6 +388,51 @@ export default function NewArticlePage() {
           </div>
         </div>
       </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Prévisualisation</DialogTitle>
+          </DialogHeader>
+
+          <article className="space-y-4">
+            {featuredImage && (
+              <img
+                src={featuredImage}
+                alt={title || "Image à la une"}
+                className="aspect-video w-full rounded-lg object-cover"
+              />
+            )}
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              {category && <Badge variant="secondary">{category}</Badge>}
+              {author && <span>Par {author}</span>}
+            </div>
+            <h1 className="font-display text-3xl font-bold text-foreground">
+              {title || "Titre de l'article"}
+            </h1>
+            {content.replace(/<[^>]*>/g, "").trim() ? (
+              <div
+                className="rte-content"
+                dangerouslySetInnerHTML={{ __html: content }}
+              />
+            ) : (
+              <p className="text-muted-foreground">
+                Aucun contenu à prévisualiser pour le moment.
+              </p>
+            )}
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                {tags.map((tag) => (
+                  <Badge key={tag} variant="outline">
+                    #{tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </article>
+        </DialogContent>
+      </Dialog>
     </div>
-  );
+  )
 }

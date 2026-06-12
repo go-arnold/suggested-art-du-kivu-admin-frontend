@@ -404,7 +404,7 @@ export default function MediathequePage() {
                 {/* Thumbnail */}
                 <div className="relative aspect-square overflow-hidden bg-muted">
                   {file.type === "image" ? (
-                    <ImageIcon src={file.thumbnail || "/placeholder.svg"} alt={file.name} className="object-cover transition-transform duration-300 group-hover:scale-105" />
+                    <img src={file.thumbnail || "/placeholder.svg"} alt={file.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   ) : (
                     <div className="flex h-full items-center justify-center">
                       <TypeIcon className="h-16 w-16 text-muted-foreground/30" />
@@ -464,7 +464,7 @@ export default function MediathequePage() {
 
                   <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted shrink-0">
                     {file.type === "image" ? (
-                      <ImageIcon src={file.thumbnail || "/placeholder.svg"} alt={file.name} className="object-cover" />
+                      <img src={file.thumbnail || "/placeholder.svg"} alt={file.name} className="h-full w-full object-cover" />
                     ) : (
                       <div
                         className={cn(
@@ -550,7 +550,7 @@ export default function MediathequePage() {
             <div className="space-y-4">
               {previewFile.type === "image" && (
                 <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
-                  <ImageIcon src={previewFile.url || "/placeholder.svg"} alt={previewFile.name} className="object-contain" />
+                  <img src={previewFile.url || "/placeholder.svg"} alt={previewFile.name} className="h-full w-full object-contain" />
                 </div>
               )}
               {previewFile.type !== "image" && (
