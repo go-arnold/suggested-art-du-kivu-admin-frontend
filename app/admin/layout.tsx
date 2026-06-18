@@ -1,44 +1,59 @@
-"use client"
+"use client";
 
-import React, { useEffect, useState } from "react"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { AdminSidebar } from "@/components/admin/sidebar"
-import { AdminNavbar } from "@/components/admin/navbar"
+import React, { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { AdminSidebar } from "@/components/admin/sidebar";
+import { AdminNavbar } from "@/components/admin/navbar";
+import { useAuth } from "@/lib/auth";
+import { Loader2 } from "lucide-react";
 
-// Vrai à partir du breakpoint lg (1024px), où la sidebar fixe remplace le tiroir.
 function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(true)
-
+  const [isDesktop, setIsDesktop] = useState(true);
   useEffect(() => {
-    const mql = window.matchMedia("(min-width: 1024px)")
-    const onChange = () => setIsDesktop(mql.matches)
-    onChange()
-    mql.addEventListener("change", onChange)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return isDesktop
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => setIsDesktop(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
 }
 
 export default function AdminLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const pathname = usePathname()
-  const isDesktop = useIsDesktop()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const isDesktop = useIsDesktop();
+  const { user, loading } = useAuth();
 
-  // Referme le tiroir mobile à chaque navigation.
+  // Redirect to login if not authenticated
   useEffect(() => {
-    setMobileOpen(false)
-  }, [pathname])
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [loading, user, router]);
 
-  // Le mode « replié » (rail d'icônes) ne concerne que le desktop ; le tiroir
-  // mobile s'affiche toujours déployé.
-  const collapsed = isDesktop ? sidebarCollapsed : false
+  // Close mobile drawer on navigation
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  const collapsed = isDesktop ? sidebarCollapsed : false;
+
+  // Show loader while checking auth
+  if (loading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,5 +76,5 @@ export default function AdminLayout({
         <div className="p-4 sm:p-6">{children}</div>
       </main>
     </div>
-  )
+  );
 }

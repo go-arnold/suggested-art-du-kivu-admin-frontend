@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -21,6 +21,8 @@ import {
   Radio,
   LogOut,
   X,
+  Mail,
+  BarChart3,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -34,6 +36,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAuth } from "@/lib/auth";
 
 const menuItems = [
   {
@@ -63,6 +66,16 @@ const menuItems = [
     icon: Users,
   },
   {
+    title: "Newsletter",
+    href: "/admin/newsletter",
+    icon: Mail,
+  },
+  {
+    title: "Statistiques",
+    href: "/admin/statistiques",
+    icon: BarChart3,
+  },
+  {
     title: "Paramètres",
     href: "/admin/parametres",
     icon: Settings,
@@ -83,7 +96,33 @@ export function AdminSidebar({
   onMobileClose,
 }: AdminSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const [openMenus, setOpenMenus] = useState<string[]>(["Contenu"]);
+
+  const handleLogout = () => {
+    logout();
+    router.replace("/login");
+  };
+
+  const displayName = user
+    ? (user.username || user.email?.split("@")[0] || "Admin")
+    : "Admin";
+  const initials = displayName
+    .split(/[\s._-]+/)
+    .slice(0, 2)
+    .map((n: string) => n[0])
+    .join("")
+    .toUpperCase() || "AK";
+  const role = user?.role ?? "viewer";
+  const roleLabels: Record<string, string> = {
+    admin:     "Administrateur",
+    editor:    "Éditeur",
+    moderator: "Modérateur",
+    viewer:    "Lecteur",
+    user:      "Utilisateur",
+  };
+  const roleLabel = roleLabels[role] ?? role;
 
   const toggleMenu = (title: string) => {
     setOpenMenus((prev) =>
@@ -282,17 +321,19 @@ export function AdminSidebar({
         {/* User Profile */}
         <div className="border-t border-sidebar-border p-3">
           {!collapsed ? (
-            <div className="flex items-center gap-3 rounded-lg p-2 hover:bg-sidebar-accent transition-smooth cursor-pointer group">
+            <div
+              className="flex items-center gap-3 rounded-lg p-2 hover:bg-sidebar-accent transition-smooth cursor-pointer group"
+              onClick={handleLogout}
+            >
               <Avatar className="h-10 w-10 border-2 border-primary/20">
-                <AvatarImage src="/placeholder-avatar.jpg" alt="Admin" />
                 <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                  JM
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Jeremy Matabaro</p>
+                <p className="text-sm font-medium truncate">{displayName}</p>
                 <p className="text-xs text-sidebar-muted truncate">
-                  Administrateur
+                  {roleLabel}
                 </p>
               </div>
               <LogOut className="h-4 w-4 text-sidebar-muted group-hover:text-sidebar-foreground transition-colors" />
@@ -300,17 +341,19 @@ export function AdminSidebar({
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg hover:bg-sidebar-accent transition-smooth">
+                <button
+                  className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg hover:bg-sidebar-accent transition-smooth"
+                  onClick={handleLogout}
+                >
                   <Avatar className="h-9 w-9 border-2 border-primary/20">
-                    <AvatarImage src="/placeholder-avatar.jpg" alt="Admin" />
                     <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
-                      JM
+                      {initials}
                     </AvatarFallback>
                   </Avatar>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                Jeremy Matabaro - Administrateur
+                {displayName} · Se déconnecter
               </TooltipContent>
             </Tooltip>
           )}

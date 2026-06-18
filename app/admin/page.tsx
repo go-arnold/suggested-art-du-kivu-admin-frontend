@@ -1,13 +1,46 @@
-"use client"
+"use client";
 
-import { Eye, Users, FileText, Calendar } from "lucide-react"
-import { StatCard } from "@/components/admin/dashboard/stat-card"
-import { ActivityFeed } from "@/components/admin/dashboard/activity-feed"
-import { QuickActions } from "@/components/admin/dashboard/quick-actions"
-import { AlertsSection } from "@/components/admin/dashboard/alerts-section"
-import { UpcomingEvents } from "@/components/admin/dashboard/upcoming-events"
+import { useEffect, useState } from "react";
+import { Eye, Users, FileText, Calendar } from "lucide-react";
+import { StatCard } from "@/components/admin/dashboard/stat-card";
+import { ActivityFeed } from "@/components/admin/dashboard/activity-feed";
+import { QuickActions } from "@/components/admin/dashboard/quick-actions";
+import { AlertsSection } from "@/components/admin/dashboard/alerts-section";
+import { UpcomingEvents } from "@/components/admin/dashboard/upcoming-events";
+import { homeApi, articlesApi, eventsApi, usersApi, type HomeData } from "@/lib/api";
+
+interface DashStats {
+  totalArticles: number;
+  upcomingEvents: number;
+  totalUsers: number;
+  totalViews: number;
+}
 
 export default function AdminDashboard() {
+  const [homeData, setHomeData] = useState<HomeData | null>(null);
+  const [stats, setStats] = useState<DashStats | null>(null);
+
+  useEffect(() => {
+    homeApi.get().then(setHomeData).catch(() => {});
+
+    // Fetch real counts in parallel
+    Promise.allSettled([
+      articlesApi.list("page_size=1"),
+      eventsApi.list("status=upcoming&page_size=1"),
+      usersApi.list("page_size=1"),
+    ]).then(([articlesRes, eventsRes, usersRes]) => {
+      setStats({
+        totalArticles:
+          articlesRes.status === "fulfilled" ? articlesRes.value.count : 0,
+        upcomingEvents:
+          eventsRes.status === "fulfilled" ? eventsRes.value.count : 0,
+        totalUsers:
+          usersRes.status === "fulfilled" ? usersRes.value.count : 0,
+        totalViews: 0, // no dedicated endpoint
+      });
+    });
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -23,35 +56,27 @@ export default function AdminDashboard() {
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Visites ce mois"
-          value="12,847"
-          change={12.5}
-          changeLabel="vs mois dernier"
-          icon={Eye}
-          trend="up"
-        />
-        <StatCard
-          title="Abonnés Newsletter"
-          value="3,482"
-          change={8.2}
-          changeLabel="vs mois dernier"
-          icon={Users}
-          trend="up"
-        />
-        <StatCard
-          title="Articles Publiés"
-          value="24"
-          change={-2}
-          changeLabel="vs mois dernier"
+          title="Articles publiés"
+          value={stats ? stats.totalArticles.toLocaleString() : "…"}
           icon={FileText}
-          trend="down"
+          trend="neutral"
         />
         <StatCard
           title="Événements à Venir"
-          value="7"
-          change={0}
-          changeLabel="ce mois"
+          value={stats ? stats.upcomingEvents.toLocaleString() : "…"}
           icon={Calendar}
+          trend="neutral"
+        />
+        <StatCard
+          title="Utilisateurs"
+          value={stats ? stats.totalUsers.toLocaleString() : "…"}
+          icon={Users}
+          trend="neutral"
+        />
+        <StatCard
+          title="Artistes mis en avant"
+          value={homeData?.featured_artists ? String(homeData.featured_artists.length) : "…"}
+          icon={Eye}
           trend="neutral"
         />
       </div>
@@ -61,12 +86,9 @@ export default function AdminDashboard() {
 
       {/* Main Content Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Activity Feed - Takes 2 columns */}
         <div className="lg:col-span-2">
-          <ActivityFeed />
+          <ActivityFeed latestNews={homeData?.latest_news} />
         </div>
-
-        {/* Upcoming Events */}
         <div>
           <UpcomingEvents />
         </div>
@@ -75,5 +97,5 @@ export default function AdminDashboard() {
       {/* Quick Actions */}
       <QuickActions />
     </div>
-  )
+  );
 }

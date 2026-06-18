@@ -1,156 +1,92 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import {
-  FileText,
-  Star,
-  Heart,
-  MessageSquare,
-  Type as type,
-  LucideIcon,
-} from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { FileText, LucideIcon } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import type { ArticleList } from "@/lib/api";
 
-interface Activity {
-  id: string;
-  type: "publication" | "artist" | "like" | "comment";
-  title: string;
-  description: string;
-  timestamp: string;
-  user?: {
-    name: string;
-    avatar?: string;
-    initials: string;
-  };
+interface ActivityFeedProps {
+  latestNews?: ArticleList[];
 }
 
-const activityIcons: Record<Activity["type"], LucideIcon> = {
-  publication: FileText,
-  artist: Star,
-  like: Heart,
-  comment: MessageSquare,
-};
+export function ActivityFeed({ latestNews }: ActivityFeedProps) {
+  const items = latestNews ?? [];
 
-const activityColors: Record<Activity["type"], string> = {
-  publication: "bg-info/10 text-info",
-  artist: "bg-warning/10 text-warning",
-  like: "bg-destructive/10 text-destructive",
-  comment: "bg-success/10 text-success",
-};
-
-const activities: Activity[] = [
-  {
-    id: "1",
-    type: "publication",
-    title: "Nouvel article publié",
-    description: '"Les rythmes du Kivu" a été publié avec succès',
-    timestamp: "Il y a 5 min",
-    user: { name: "Jeremy Matabaro", initials: "JM" },
-  },
-  {
-    id: "2",
-    type: "artist",
-    title: "Nouvel artiste ajouté",
-    description: "Marie Kalume a rejoint la plateforme",
-    timestamp: "Il y a 1h",
-    user: { name: "Admin", initials: "AD" },
-  },
-  {
-    id: "3",
-    type: "like",
-    title: "Nouveau like",
-    description: '"Concert de Goma" a reçu 25 nouveaux likes',
-    timestamp: "Il y a 2h",
-  },
-  {
-    id: "4",
-    type: "comment",
-    title: "Commentaire en attente",
-    description: "3 nouveaux commentaires à modérer",
-    timestamp: "Il y a 3h",
-  },
-  {
-    id: "5",
-    type: "publication",
-    title: "Article mis à jour",
-    description: '"Festival Amani 2026" a été modifié',
-    timestamp: "Il y a 4h",
-    user: { name: "Sophie M.", initials: "SM" },
-  },
-];
-
-export function ActivityFeed() {
   return (
     <div className="rounded-xl bg-card p-6 card-shadow">
       <h3 className="font-display text-lg font-semibold text-foreground">
-        Activités Récentes
+        Derniers Articles
       </h3>
       <p className="text-sm text-muted-foreground">
-        Dernières actions sur la plateforme
+        Publications récentes sur la plateforme
       </p>
 
       <div className="mt-6 space-y-1">
-        {activities.map((activity, index) => {
-          const Icon = activityIcons[activity.type];
-          const colorClass = activityColors[activity.type];
+        {items.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Aucune activité récente
+          </p>
+        ) : (
+          items.slice(0, 6).map((article, index) => {
+            const categoryName =
+              typeof article.category === "string"
+                ? article.category
+                : (article.category as { name?: string })?.name ?? "—";
 
-          return (
-            <div
-              key={activity.id}
-              className={cn(
-                "group relative flex items-start gap-4 rounded-lg p-3 transition-smooth hover:bg-muted/50",
-                index !== activities.length - 1 && "border-b border-border/50",
-              )}
-            >
-              {/* Timeline dot */}
+            return (
               <div
+                key={article.id}
                 className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                  colorClass,
+                  "group relative flex items-start gap-4 rounded-lg p-3 transition-smooth hover:bg-muted/50",
+                  index !== Math.min(items.length, 6) - 1 &&
+                    "border-b border-border/50"
                 )}
               >
-                <Icon className="h-5 w-5" />
-              </div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-info/10 text-info">
+                  <FileText className="h-5 w-5" />
+                </div>
 
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-foreground">
-                    {activity.title}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground line-clamp-1">
+                    {article.title}
                   </p>
-                </div>
-                <p className="mt-0.5 text-sm text-muted-foreground truncate">
-                  {activity.description}
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  {activity.user && (
-                    <>
-                      <Avatar className="h-5 w-5">
-                        <AvatarImage
-                          src={activity.user.avatar || "/placeholder.svg"}
-                        />
-                        <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                          {activity.user.initials}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs text-muted-foreground">
-                        {activity.user.name}
-                      </span>
-                      <span className="text-muted-foreground">·</span>
-                    </>
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {activity.timestamp}
-                  </span>
+                  <p className="mt-0.5 text-sm text-muted-foreground line-clamp-1">
+                    {article.excerpt ?? categoryName}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Avatar className="h-5 w-5">
+                      <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                        {article.author_name?.charAt(0).toUpperCase() ?? "?"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-xs text-muted-foreground">
+                      {article.author_name}
+                    </span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-xs text-muted-foreground">
+                      {article.view_count?.toLocaleString() ?? 0} vues
+                    </span>
+                    {article.published_at && (
+                      <>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(article.published_at).toLocaleDateString(
+                            "fr-FR",
+                            { day: "numeric", month: "short" }
+                          )}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       <button className="mt-4 w-full rounded-lg border border-border py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-smooth">
-        Voir toutes les activités
+        Voir tous les articles
       </button>
     </div>
   );
