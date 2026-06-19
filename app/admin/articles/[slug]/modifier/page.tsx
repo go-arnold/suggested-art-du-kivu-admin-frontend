@@ -18,7 +18,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import dynamic from "next/dynamic";
-import { articlesApi, type ArticleCategory } from "@/lib/api";
+import { articlesApi, usersApi, type ArticleCategory, type User } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 // Éditeur riche chargé à la demande (lazy) — allège le bundle initial de la page.
 const RichTextEditor = dynamic(
@@ -37,10 +38,12 @@ export default function ModifierArticlePage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const slug   = params.slug;
+  const { user } = useAuth();
 
   const [title,         setTitle]         = useState("");
   const [content,       setContent]       = useState("");
   const [categoryId,    setCategoryId]    = useState<string>("");  // stored as string ID
+  const [authorId,      setAuthorId]      = useState<string>("");
   const [tags,          setTags]          = useState<string[]>([]);
   const [tagInput,      setTagInput]      = useState("");
   const [featuredImage, setFeaturedImage] = useState<string | null>(null);
@@ -51,20 +54,35 @@ export default function ModifierArticlePage() {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isPreviewOpen,  setIsPreviewOpen]  = useState(false);
 
-  const [categories,  setCategories]  = useState<ArticleCategory[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
+  const [categories,    setCategories]    = useState<ArticleCategory[]>([]);
+  const [authors,       setAuthors]       = useState<User[]>([]);
+  const [articleAuthor, setArticleAuthor] = useState<User | null>(null);
+  const [loadingData,   setLoadingData]   = useState(true);
   const [saving,      setSaving]      = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load article + categories on mount
   useEffect(() => {
+    // Auteurs (liste des utilisateurs) — non bloquant
+    usersApi.list("page_size=50")
+      .then((r) => setAuthors(r.results))
+      .catch(() => {});
+
     Promise.all([
       articlesApi.get(slug),
       articlesApi.categories(),
     ]).then(([article, cats]) => {
       setTitle(article.title);
+      setContent(article.content ?? "");
       setCategories(cats);
+
+      // Auteur de l'article (prérempli)
+      const author = article.author;
+      if (author?.id) {
+        setAuthorId(String(author.id));
+        setArticleAuthor(author as unknown as User);
+      }
 
       // Resolve category → find matching ID
       const cat = article.category;
@@ -77,6 +95,20 @@ export default function ModifierArticlePage() {
       }
 
       if (article.featured_image_url) setFeaturedImage(article.featured_image_url);
+
+      // Tags (l'API peut renvoyer des chaînes ou des objets {name})
+      const rawTags = (article as { tags?: (string | { name: string })[] }).tags ?? [];
+      setTags(rawTags.map((t) => (typeof t === "string" ? t : t.name)));
+
+      // Statut + mise en avant
+      const st = (article as { status?: "draft" | "published" | "scheduled" }).status;
+      if (st) setStatus(st);
+      setIsFeatured(!!(article as { is_featured?: boolean }).is_featured);
+
+      // Date de programmation
+      if (st === "scheduled" && article.published_at) {
+        setScheduleDate(new Date(article.published_at));
+      }
     }).catch(() => {
       toast.error("Impossible de charger l'article");
       router.push("/admin/articles");
@@ -131,6 +163,18 @@ export default function ModifierArticlePage() {
 
   const selectedCategory = categories.find((c) => String(c.id) === categoryId);
 
+  const authorDisplayName = (a: User) =>
+    a.username || a.email?.split("@")[0] || `#${a.id}`;
+
+  // L'auteur de l'article doit toujours figurer dans les options, même s'il
+  // n'est pas dans la page d'utilisateurs chargée (pagination/permissions).
+  const authorOptions = useMemo<User[]>(() => {
+    if (articleAuthor && !authors.some((a) => String(a.id) === String(articleAuthor.id))) {
+      return [articleAuthor, ...authors];
+    }
+    return authors;
+  }, [authors, articleAuthor]);
+
   if (loadingData) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -156,14 +200,26 @@ export default function ModifierArticlePage() {
           <Button variant="outline" size="sm" onClick={() => setIsPreviewOpen(true)}>
             <Eye className="mr-2 h-4 w-4" />Aperçu
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => handleSave("draft")} disabled={saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <Save className="mr-2 h-4 w-4" />Sauvegarder
-          </Button>
-          <Button size="sm" onClick={() => handleSave("published")} disabled={saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <Send className="mr-2 h-4 w-4" />Publier
-          </Button>
+
+          {/* Un seul bouton d'action selon le statut sélectionné :
+              - "Publié" -> Publier ; "Brouillon"/"Programmer" -> enregistrer sans publier */}
+          {status === "published" ? (
+            <Button size="sm" onClick={() => handleSave("published")} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Send className="mr-2 h-4 w-4" />Publier
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => handleSave(status)}
+              disabled={saving}
+            >
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Save className="mr-2 h-4 w-4" />
+              {status === "scheduled" ? "Programmer" : "Sauvegarder"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -219,6 +275,39 @@ export default function ModifierArticlePage() {
                   </Popover>
                 </div>
               )}
+
+              {/* Auteur */}
+              <div className="space-y-2">
+                <Label>Auteur</Label>
+                {loadingData ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />Chargement…
+                  </div>
+                ) : (
+                  <Select value={authorId} onValueChange={setAuthorId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un auteur" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {authorOptions.map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          <div className="flex items-center gap-2">
+                            <span>{authorDisplayName(a)}</span>
+                            {user && String(a.id) === String(user.id) && (
+                              <span className="text-xs font-medium text-primary">(vous)</span>
+                            )}
+                            {a.role && (
+                              <span className="text-xs text-muted-foreground capitalize">
+                                ({a.role})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
           </div>
 
@@ -250,18 +339,24 @@ export default function ModifierArticlePage() {
           {/* Category — by ID */}
           <div className="rounded-xl bg-card p-6 card-shadow">
             <h3 className="font-semibold mb-4">Catégorie</h3>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sélectionner une catégorie" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={String(cat.id)}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {loadingData ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="h-4 w-4 animate-spin" />Chargement…
+              </div>
+            ) : (
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner une catégorie" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={String(cat.id)}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Tags */}
@@ -270,7 +365,7 @@ export default function ModifierArticlePage() {
             <div className="flex gap-2">
               <Input placeholder="Ajouter un tag…" value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)} onKeyDown={handleTagKeyDown} />
-              <Button variant="secondary" onClick={addTag}>+</Button>
+              <Button variant="secondary" onClick={addTag}>Ajouter</Button>
             </div>
             {tags.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
