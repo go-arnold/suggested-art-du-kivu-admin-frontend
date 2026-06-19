@@ -72,5 +72,8 @@
   },
   "overrides": {
     "postcss": "$postcss"
+  },
+  "engines": {
+    "node": ">=20.9.0"
   }
 }
