@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Upload, X, Loader2, Instagram, Facebook, Twitter, Youtube, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { artistsApi } from "@/lib/api";
 import { toast } from "sonner";
 
-export default function NouvelArtistePage() {
+export default function ModifierArtistePage() {
   const router = useRouter();
+  const params = useParams<{ slug: string }>();
+  const slug = params.slug;
 
   const [name,       setName]       = useState("");
   const [bio,        setBio]        = useState("");
@@ -25,9 +27,29 @@ export default function NouvelArtistePage() {
   const [twitter,    setTwitter]    = useState("");
   const [youtube,    setYoutube]    = useState("");
   const [photo,      setPhoto]      = useState<string | null>(null);
+  const [loadingData, setLoadingData] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Charge l'artiste à éditer
+  useEffect(() => {
+    artistsApi.get(slug).then((a) => {
+      setName(a.name ?? "");
+      setBio(a.bio ?? "");
+      setCity(a.city ?? "");
+      setIsFeatured(a.is_featured);
+      setPhoto(a.photo_url ?? null);
+      const links = (a.social_links ?? {}) as Record<string, string | undefined>;
+      setInstagram(links.instagram ?? "");
+      setFacebook(links.facebook ?? "");
+      setTwitter(links.twitter ?? "");
+      setYoutube(links.youtube ?? "");
+    }).catch(() => {
+      toast.error("Artiste introuvable");
+      router.push("/admin/artistes");
+    }).finally(() => setLoadingData(false));
+  }, [slug, router]);
 
   const handleImage = (file: File | undefined) => {
     if (!file) return;
@@ -42,14 +64,13 @@ export default function NouvelArtistePage() {
 
     setSubmitting(true);
     try {
-      // Build social_links object — only include non-empty values
       const social_links: Record<string, string> = {};
       if (instagram.trim()) social_links.instagram = instagram.trim();
       if (facebook.trim())  social_links.facebook  = facebook.trim();
       if (twitter.trim())   social_links.twitter   = twitter.trim();
       if (youtube.trim())   social_links.youtube   = youtube.trim();
 
-      await artistsApi.create({
+      await artistsApi.update(slug, {
         name:        name.trim(),
         bio:         bio.trim() || undefined,
         city:        city.trim() || undefined,
@@ -57,51 +78,55 @@ export default function NouvelArtistePage() {
         social_links: Object.keys(social_links).length ? social_links : undefined,
       });
 
-      toast.success("Artiste créé avec succès");
-      router.push("/admin/artistes");
+      toast.success("Artiste mis à jour");
+      router.push(`/admin/artistes/${slug}`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la création");
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (loadingData) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/artistes"><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href={`/admin/artistes/${slug}`}><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
         <div className="flex-1">
-          <h1 className="font-display text-2xl font-bold text-foreground">Nouvel Artiste</h1>
-          <p className="text-sm text-muted-foreground">Ajouter un artiste à la plateforme</p>
+          <h1 className="font-display text-2xl font-bold text-foreground">Modifier l&apos;artiste</h1>
+          <p className="text-sm text-muted-foreground">Mettez à jour les informations de l&apos;artiste</p>
         </div>
         <Button onClick={handleSubmit} disabled={submitting}>
           {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Créer l&apos;artiste
+          Enregistrer
         </Button>
       </div>
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[1fr_340px]">
         {/* Main */}
         <div className="space-y-6">
-          {/* Identity */}
           <div className="rounded-xl bg-card p-6 card-shadow space-y-5">
             <h3 className="font-semibold text-foreground">Informations</h3>
-
             <div className="space-y-2">
               <Label htmlFor="name">Nom de l&apos;artiste *</Label>
               <Input id="name" placeholder="Ex: Fally Ipupa" value={name}
                 onChange={(e) => setName(e.target.value)} />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="bio">Biographie</Label>
               <Textarea id="bio" placeholder="Décrivez cet artiste..." rows={5}
                 value={bio} onChange={(e) => setBio(e.target.value)} />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="city">Ville</Label>
               <Input id="city" placeholder="Ex: Goma" value={city}
@@ -139,7 +164,6 @@ export default function NouvelArtistePage() {
             <h3 className="font-semibold text-foreground">Photo</h3>
             <input ref={fileRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => handleImage(e.target.files?.[0])} />
-
             {photo ? (
               <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
                 <img src={photo} alt="Preview" loading="lazy" decoding="async" className="h-full w-full object-cover" />
@@ -175,31 +199,6 @@ export default function NouvelArtistePage() {
               <Switch checked={isFeatured} onCheckedChange={setIsFeatured} />
             </div>
           </div>
-
-          {/* Live preview */}
-          {name && (
-            <div className="rounded-xl bg-card p-4 card-shadow">
-              <p className="text-xs text-muted-foreground mb-3">Aperçu de la carte</p>
-              <div className="rounded-lg overflow-hidden border border-border">
-                <div className="relative h-32 bg-muted flex items-center justify-center">
-                  {photo
-                    ? <img src={photo} alt={name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                    : <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center text-primary font-display text-xl">
-                        {name.charAt(0)}
-                      </div>}
-                  {isFeatured && (
-                    <Badge className="absolute left-2 top-2 bg-primary text-primary-foreground gap-1 text-xs">
-                      <Star className="h-3 w-3 fill-current" />Artiste du mois
-                    </Badge>
-                  )}
-                </div>
-                <div className="p-3">
-                  <p className="font-semibold text-sm">{name}</p>
-                  {city && <p className="text-xs text-muted-foreground">{city}</p>}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </form>
     </div>

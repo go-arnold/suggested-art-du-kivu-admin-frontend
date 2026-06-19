@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Calendar, MapPin, Users, Clock, Plus, Search, Filter,
   MoreHorizontal, Ticket, DollarSign, Eye, Edit, Trash2, Loader2,
@@ -62,7 +62,7 @@ function formatPrice(price: string | number | null) {
 }
 
 const EMPTY_FORM: EventWrite = {
-  title: "", description: "", date: "", venue_name: "", city: "", category: "",
+  title: "", description: "", date: "", venue_name: "", city: null, category: "",
   ticket_price: null, is_featured: false,
 };
 
@@ -75,11 +75,27 @@ export default function EvenementsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [form, setForm] = useState<EventWrite>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [cities, setCities] = useState<{ id: number; name: string }[]>([]);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [viewEvent, setViewEvent] = useState<EventList | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleImage = (file: File | undefined) => {
+    if (!file) return;
+    setImageFile(file); // envoyé en multipart à la soumission
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(String(reader.result));
+    reader.readAsDataURL(file);
+  };
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      // Les plus récemment créés en premier
+      params.set("ordering", "-created_at");
       if (searchQuery) params.set("search", searchQuery);
       if (filterStatus !== "all") params.set("status", filterStatus);
       if (filterCategory !== "all") params.set("category", filterCategory);
@@ -94,18 +110,90 @@ export default function EvenementsPage() {
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
-  const handleCreate = async () => {
+  // Charge la liste des villes (le backend attend l'ID de la ville, pas son nom)
+  useEffect(() => {
+    eventsApi.cities().then(setCities).catch(() => {});
+  }, []);
+
+  const openCreate = () => {
+    setEditingSlug(null);
+    setForm(EMPTY_FORM);
+    setImagePreview(null);
+    setImageFile(null);
+    setIsCreateDialogOpen(true);
+  };
+
+  // Pré-remplit le formulaire pour l'édition. On ouvre tout de suite avec les
+  // données de la liste (partielles), puis on charge le détail complet
+  // (description, ville, image) qui n'est pas renvoyé par la liste.
+  const openEdit = async (event: EventList) => {
+    setEditingSlug(event.slug);
+    setImageFile(null); // on ne réenvoie l'image que si l'utilisateur en choisit une
+    setImagePreview(event.image_url ?? null);
+    setForm({
+      title: event.title,
+      description: event.description ?? "",
+      date: event.date ? event.date.slice(0, 16) : "",
+      venue_name: event.venue_name ?? "",
+      venue_address: event.venue_address ?? "",
+      city: event.city?.id ?? null,
+      category: event.category ?? "",
+      ticket_price: event.ticket_price != null ? Number(event.ticket_price) : null,
+      is_featured: event.is_featured,
+    });
+    setIsCreateDialogOpen(true);
+
+    try {
+      const d = await eventsApi.get(event.slug);
+      setImagePreview(d.image_url ?? null);
+      setForm((f) => ({
+        ...f,
+        description: d.description ?? "",
+        venue_address: d.venue_address ?? "",
+        city: d.city?.id ?? null,
+        ticket_price: d.ticket_price != null ? Number(d.ticket_price) : null,
+        image: undefined, // on ne renvoie l'image que si l'utilisateur en choisit une nouvelle
+      }));
+    } catch {
+      /* on garde les valeurs de la liste si le détail échoue */
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!form.title || !form.date) { toast.error("Titre et date sont requis"); return; }
     if (!form.venue_name.trim()) { toast.error("Le lieu (salle) est requis"); return; }
+    if (!form.category) { toast.error("La catégorie est requise"); return; }
     setSubmitting(true);
     try {
-      await eventsApi.create(form);
-      toast.success("Événement créé");
+      if (imageFile) {
+        // Upload multipart (le backend attend un fichier pour l'image)
+        const fd = new FormData();
+        fd.append("title", form.title);
+        fd.append("description", form.description);
+        fd.append("date", form.date);
+        fd.append("venue_name", form.venue_name);
+        if (form.venue_address) fd.append("venue_address", form.venue_address);
+        if (form.city != null) fd.append("city", String(form.city));
+        fd.append("category", form.category);
+        if (form.ticket_price != null) fd.append("ticket_price", String(form.ticket_price));
+        fd.append("is_featured", String(form.is_featured));
+        fd.append("image", imageFile);
+        if (editingSlug) await eventsApi.updateForm(editingSlug, fd);
+        else await eventsApi.createForm(fd);
+      } else if (editingSlug) {
+        await eventsApi.update(editingSlug, form);
+      } else {
+        await eventsApi.create(form);
+      }
+      toast.success(editingSlug ? "Événement mis à jour" : "Événement créé");
       setIsCreateDialogOpen(false);
       setForm(EMPTY_FORM);
+      setEditingSlug(null);
+      setImageFile(null);
+      setImagePreview(null);
       fetchEvents();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la création");
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
     } finally {
       setSubmitting(false);
     }
@@ -136,14 +224,18 @@ export default function EvenementsPage() {
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90">
+            <Button className="bg-primary hover:bg-primary/90" onClick={openCreate}>
               <Plus className="mr-2 h-4 w-4" />Nouvel Événement
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Créer un Événement</DialogTitle>
-              <DialogDescription>Ajoutez un nouvel événement au calendrier culturel.</DialogDescription>
+              <DialogTitle>{editingSlug ? "Modifier l'Événement" : "Créer un Événement"}</DialogTitle>
+              <DialogDescription>
+                {editingSlug
+                  ? "Mettez à jour les informations de l'événement."
+                  : "Ajoutez un nouvel événement au calendrier culturel."}
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -185,9 +277,40 @@ export default function EvenementsPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Ville</Label>
-                  <Input placeholder="Ex: Goma" value={form.city ?? ""}
-                    onChange={(e) => setForm({ ...form, city: e.target.value })} />
+                  <Select
+                    value={form.city != null ? String(form.city) : ""}
+                    onValueChange={(v) => setForm({ ...form, city: v ? Number(v) : null })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                    <SelectContent>
+                      {cities.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Image de l&apos;événement</Label>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                  onChange={(e) => handleImage(e.target.files?.[0])} />
+                {imagePreview ? (
+                  <div className="relative h-40 overflow-hidden rounded-lg bg-muted">
+                    <img src={imagePreview} alt="Aperçu" loading="lazy" decoding="async"
+                      className="h-full w-full object-cover" />
+                    <Button type="button" variant="destructive" size="icon"
+                      className="absolute right-2 top-2 h-8 w-8"
+                      onClick={() => { setImagePreview(null); setImageFile(null); }}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div onClick={() => fileRef.current?.click()}
+                    className="flex h-40 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors">
+                    <Plus className="mb-1 h-6 w-6 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Cliquez pour ajouter une image</p>
+                  </div>
+                )}
               </div>
               <div className="grid gap-2">
                 <Label>Prix billet (FC)</Label>
@@ -204,9 +327,9 @@ export default function EvenementsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Annuler</Button>
-              <Button className="bg-primary hover:bg-primary/90" onClick={handleCreate} disabled={submitting}>
+              <Button className="bg-primary hover:bg-primary/90" onClick={handleSubmit} disabled={submitting}>
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Créer l&apos;événement
+                {editingSlug ? "Enregistrer" : "Créer l'événement"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -295,6 +418,8 @@ export default function EvenementsPage() {
                 <img
                   src={event.image_url || "/placeholder.svg"}
                   alt={event.title}
+                  loading="lazy"
+                  decoding="async"
                   className="h-full w-full object-cover transition-transform group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -315,8 +440,12 @@ export default function EvenementsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem><Eye className="mr-2 h-4 w-4" />Voir</DropdownMenuItem>
-                    <DropdownMenuItem><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setViewEvent(event)}>
+                      <Eye className="mr-2 h-4 w-4" />Voir
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openEdit(event)}>
+                      <Edit className="mr-2 h-4 w-4" />Modifier
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(event.slug)}>
                       <Trash2 className="mr-2 h-4 w-4" />Supprimer
@@ -381,12 +510,79 @@ export default function EvenementsPage() {
             <Calendar className="h-12 w-12 text-muted-foreground/50" />
             <h3 className="mt-4 font-semibold text-foreground">Aucun événement trouvé</h3>
             <p className="mt-1 text-sm text-muted-foreground">Modifiez vos filtres ou créez un nouvel événement.</p>
-            <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={() => setIsCreateDialogOpen(true)}>
+            <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={openCreate}>
               <Plus className="mr-2 h-4 w-4" />Créer un événement
             </Button>
           </CardContent>
         </Card>
       )}
+
+      {/* Détail de l'événement (Voir) */}
+      <Dialog open={!!viewEvent} onOpenChange={(o) => !o && setViewEvent(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          {viewEvent && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{viewEvent.title}</DialogTitle>
+                <DialogDescription>Détails de l&apos;événement</DialogDescription>
+              </DialogHeader>
+              {viewEvent.image_url && (
+                <img
+                  src={viewEvent.image_url}
+                  alt={viewEvent.title}
+                  loading="lazy"
+                  decoding="async"
+                  className="aspect-video w-full rounded-lg object-cover"
+                />
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {getStatusBadge(viewEvent.status)}
+                {viewEvent.category && (
+                  <Badge variant="secondary" className={getCategoryColor(viewEvent.category)}>
+                    {viewEvent.category}
+                  </Badge>
+                )}
+                {viewEvent.is_featured && (
+                  <Badge className="bg-primary/10 text-primary">En vedette</Badge>
+                )}
+              </div>
+              {viewEvent.description && (
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {viewEvent.description}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  {viewEvent.date
+                    ? new Date(viewEvent.date).toLocaleString("fr-FR", {
+                        dateStyle: "long", timeStyle: "short",
+                      })
+                    : "—"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  {viewEvent.venue_name ?? "—"}
+                  {viewEvent.city?.name ? `, ${viewEvent.city.name}` : ""}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Ticket className="h-4 w-4 text-muted-foreground" />
+                  {formatPrice(viewEvent.ticket_price)}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setViewEvent(null)}>Fermer</Button>
+                <Button
+                  className="bg-primary hover:bg-primary/90"
+                  onClick={() => { const e = viewEvent; setViewEvent(null); openEdit(e); }}
+                >
+                  <Edit className="mr-2 h-4 w-4" />Modifier
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

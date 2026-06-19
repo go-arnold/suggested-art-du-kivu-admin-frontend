@@ -22,6 +22,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { videosApi } from "@/lib/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,8 @@ interface PaginatedResponse<T> {
   results: T[];
 }
 
-const BASE = "https://jeremy-backend.onrender.com/api/v1";
+// Proxy same-origin (voir rewrites dans next.config.mjs) — évite le CORS.
+const BASE = "/api/v1";
 
 async function fetchVideos(params: string): Promise<PaginatedResponse<VideoItem>> {
   const res = await fetch(`${BASE}/webtv/videos/${params ? `?${params}` : ""}`);
@@ -95,6 +97,7 @@ export default function MediathequePage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set("ordering", "-created_at"); // plus récents en premier
       params.set("page", String(page));
       params.set("page_size", String(PAGE_SIZE));
       if (searchQuery) params.set("search", searchQuery);
@@ -121,13 +124,63 @@ export default function MediathequePage() {
   const toggleSelectAll = () =>
     setSelectedIds(selectedIds.length === videos.length ? [] : videos.map((v) => v.id));
 
+  // Le backend n'accepte pas de fichier vidéo (champ video_url = URL), donc le
+  // téléversement par glisser-déposer n'est pas possible tel quel.
+  const notifyUploadUnavailable = () =>
+    toast.info("Le téléversement de fichier n'est pas disponible : les vidéos s'ajoutent par URL.");
+
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
-  const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer?.files?.length) notifyUploadUnavailable();
+  };
 
   const copyUrl = (slug: string) => {
     navigator.clipboard.writeText(`https://artdukivu.com/webtv/${slug}`);
     toast.success("URL copiée");
+  };
+
+  // Ouvre la vidéo dans un nouvel onglet (récupère video_url depuis le détail).
+  const watchVideo = async (slug: string) => {
+    try {
+      const d = await videosApi.get(slug);
+      if (d.video_url) {
+        window.open(d.video_url, "_blank", "noopener,noreferrer");
+      } else {
+        toast.error("Aucune URL de lecture pour cette vidéo");
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Impossible d'ouvrir la vidéo");
+    }
+  };
+
+  const handleDeleteVideo = async (slug: string) => {
+    if (!confirm("Supprimer cette vidéo ?")) return;
+    try {
+      await videosApi.delete(slug);
+      toast.success("Vidéo supprimée");
+      setPreviewVideo(null);
+      setSelectedIds([]);
+      fetchData();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la suppression");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!confirm(`Supprimer ${selectedIds.length} vidéo(s) ?`)) return;
+    try {
+      const slugs = videos.filter((v) => selectedIds.includes(v.id)).map((v) => v.slug);
+      await Promise.all(slugs.map((s) => videosApi.delete(s)));
+      toast.success("Vidéos supprimées");
+      setSelectedIds([]);
+      fetchData();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la suppression");
+    }
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -142,7 +195,7 @@ export default function MediathequePage() {
             {totalCount.toLocaleString()} vidéos · WebTV Art-du-Kivu
           </p>
         </div>
-        <Button>
+        <Button onClick={notifyUploadUnavailable}>
           <Upload className="mr-2 h-4 w-4" />Uploader
         </Button>
       </div>
@@ -150,9 +203,10 @@ export default function MediathequePage() {
       {/* Upload Zone */}
       <div
         className={cn(
-          "rounded-xl border-2 border-dashed p-8 text-center transition-colors",
+          "cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors",
           isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
         )}
+        onClick={notifyUploadUnavailable}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -204,7 +258,7 @@ export default function MediathequePage() {
           <span className="text-sm font-medium">
             {selectedIds.length} vidéo{selectedIds.length > 1 ? "s" : ""} sélectionnée{selectedIds.length > 1 ? "s" : ""}
           </span>
-          <Button size="sm" variant="destructive">
+          <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
             <Trash2 className="mr-2 h-4 w-4" />Supprimer
           </Button>
         </div>
@@ -251,7 +305,7 @@ export default function MediathequePage() {
                 {/* Thumbnail */}
                 <div className="relative aspect-video overflow-hidden bg-muted">
                   {video.thumbnail_url ? (
-                    <img src={video.thumbnail_url} alt={video.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    <img src={video.thumbnail_url} alt={video.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   ) : (
                     <div className="flex h-full items-center justify-center">
                       <Video className="h-12 w-12 text-muted-foreground/30" />
@@ -298,7 +352,7 @@ export default function MediathequePage() {
 
                   <div className="relative h-14 w-24 overflow-hidden rounded-lg bg-muted shrink-0">
                     {video.thumbnail_url ? (
-                      <img src={video.thumbnail_url} alt={video.title} className="h-full w-full object-cover" />
+                      <img src={video.thumbnail_url} alt={video.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center bg-muted">
                         <Video className="h-6 w-6 text-muted-foreground/50" />
@@ -387,7 +441,7 @@ export default function MediathequePage() {
             <div className="space-y-4">
               <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
                 {previewVideo.thumbnail_url ? (
-                  <img src={previewVideo.thumbnail_url} alt={previewVideo.title} className="h-full w-full object-cover" />
+                  <img src={previewVideo.thumbnail_url} alt={previewVideo.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full items-center justify-center">
                     <Video className="h-16 w-16 text-muted-foreground/30" />
@@ -413,12 +467,21 @@ export default function MediathequePage() {
                 )}
               </div>
 
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => copyUrl(previewVideo.slug)}>
-                  <Copy className="mr-2 h-4 w-4" />Copier l'URL
-                </Button>
-                <Button className="flex-1">
-                  <Play className="mr-2 h-4 w-4" />Regarder
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => copyUrl(previewVideo.slug)}>
+                    <Copy className="mr-2 h-4 w-4" />Copier l'URL
+                  </Button>
+                  <Button className="flex-1" onClick={() => watchVideo(previewVideo.slug)}>
+                    <Play className="mr-2 h-4 w-4" />Regarder
+                  </Button>
+                </div>
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  onClick={() => handleDeleteVideo(previewVideo.slug)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />Supprimer
                 </Button>
               </div>
             </div>

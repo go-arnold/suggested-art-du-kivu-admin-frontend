@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { GoogleLoginButton } from "@/components/auth/google-login-button";
 
 // ── Password strength ─────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export default function RegisterPage() {
   const [showPwd2,   setShowPwd2]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success,    setSuccess]    = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   const strength = score(password1);
   const match    = password1.length > 0 && password1 === password2;
@@ -115,7 +117,7 @@ export default function RegisterPage() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      await authApi.register({
+      const res = await authApi.register({
         username: username.trim(),
         email: email.trim(),
         password1,
@@ -123,6 +125,8 @@ export default function RegisterPage() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
       });
+      // Le backend renvoie { detail: "Un email de vérification a été envoyé." }
+      setSuccessMsg(res?.detail ?? "");
       setSuccess(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
@@ -131,7 +135,7 @@ export default function RegisterPage() {
       // mais le compte est généralement créé.
       if (msg.includes("server_error") || msg.includes("500") || msg.includes("unexpected")) {
         setSuccess(true);
-        toast.info("Compte enregistré. Un administrateur validera votre accès.");
+        toast.info("Compte créé, mais l'email de vérification n'a pas pu être envoyé.");
       } else {
         toast.error(msg || "Erreur lors de la création du compte");
       }
@@ -164,22 +168,24 @@ export default function RegisterPage() {
               <CheckCircle2 className="h-8 w-8 text-success" />
             </div>
             <h2 className="font-display text-xl font-bold text-foreground">
-              Demande envoyée !
+              Compte créé !
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Votre demande d'accès a bien été enregistrée pour{" "}
-              <span className="font-medium text-foreground">@{username}</span>.
+              {successMsg || "Un email de vérification a été envoyé."}
               <br /><br />
-              Un administrateur va examiner votre demande et vous contactera à{" "}
-              <span className="font-medium text-foreground">{email}</span>.
+              Vérifiez la boîte de réception de{" "}
+              <span className="font-medium text-foreground">{email}</span>{" "}
+              et cliquez sur le lien de confirmation pour activer le compte{" "}
+              <span className="font-medium text-foreground">@{username}</span>,
+              puis connectez-vous.
             </p>
 
             {/* Timeline */}
             <div className="rounded-xl bg-muted/50 p-4 text-left space-y-3">
               {[
-                { step: "1", text: "Demande reçue", done: true },
-                { step: "2", text: "Vérification par l'administrateur", done: false },
-                { step: "3", text: "Activation de votre compte", done: false },
+                { step: "1", text: "Compte créé", done: true },
+                { step: "2", text: "Vérifier votre email", done: false },
+                { step: "3", text: "Se connecter", done: false },
               ].map((item) => (
                 <div key={item.step} className="flex items-center gap-3">
                   <div className={cn(
@@ -389,8 +395,8 @@ export default function RegisterPage() {
 
           {/* Notice */}
           <div className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-            🔒 Votre compte sera soumis à la validation d'un administrateur
-            avant d'avoir accès à l'interface d'administration.
+            📧 Un email de vérification vous sera envoyé. Confirmez votre adresse
+            avant de pouvoir vous connecter.
           </div>
 
           <Button
@@ -401,6 +407,16 @@ export default function RegisterPage() {
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Créer mon compte
           </Button>
+
+          {/* Séparateur + inscription/connexion Google */}
+          <div className="relative">
+            <span className="absolute inset-x-0 top-1/2 h-px bg-border" />
+            <span className="relative mx-auto block w-fit bg-card px-2 text-xs text-muted-foreground">
+              ou
+            </span>
+          </div>
+
+          <GoogleLoginButton disabled={submitting} label="S'inscrire avec Google" />
         </form>
 
         {/* Login link */}

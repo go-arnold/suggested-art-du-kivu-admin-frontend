@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Radio, Calendar, Clock, Eye, MoreHorizontal, Plus, Search, Filter,
-  Wifi, WifiOff, Video, Loader2, Play, Pause,
+  Wifi, WifiOff, Video, Loader2, Play, Pause, Edit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,12 +79,14 @@ export default function EmissionsPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [dialogOpen,  setDialogOpen]  = useState(false);
   const [form,        setForm]        = useState<EmissionWrite>(EMPTY_FORM);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [submitting,  setSubmitting]  = useState(false);
 
   const fetchShows = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set("ordering", "-created_at"); // plus récentes en premier
       if (searchQuery)            params.set("search", searchQuery);
       if (filterStatus !== "all") params.set("status", filterStatus);
       const data = await emissionsApi.list(params.toString());
@@ -98,22 +100,72 @@ export default function EmissionsPage() {
 
   useEffect(() => { fetchShows(); }, [fetchShows]);
 
-  const handleCreate = async () => {
+  const openCreate = () => {
+    setEditingSlug(null);
+    setForm(EMPTY_FORM);
+    setDialogOpen(true);
+  };
+
+  // Pré-remplit depuis la liste puis charge le détail (description complète, etc.)
+  const openEdit = async (show: EmissionList) => {
+    setEditingSlug(show.slug);
+    setForm({
+      title: show.title,
+      description: show.description ?? "",
+      scheduled_at: show.scheduled_at ? show.scheduled_at.slice(0, 16) : "",
+      duration_minutes: show.duration_minutes ?? 0,
+      stream_url: show.stream_url || undefined,
+    });
+    setDialogOpen(true);
+    try {
+      const d = await emissionsApi.get(show.slug);
+      setForm((f) => ({
+        ...f,
+        description: d.description ?? "",
+        stream_url: d.stream_url || undefined,
+        duration_minutes: d.duration_minutes ?? f.duration_minutes,
+      }));
+    } catch {
+      /* on garde les valeurs de la liste */
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!form.title.trim() || !form.scheduled_at) {
       toast.error("Titre et date / heure sont requis");
       return;
     }
     setSubmitting(true);
     try {
-      await emissionsApi.create(form);
-      toast.success("Émission programmée");
+      if (editingSlug) {
+        await emissionsApi.update(editingSlug, form);
+        toast.success("Émission mise à jour");
+      } else {
+        await emissionsApi.create(form);
+        toast.success("Émission programmée");
+      }
       setDialogOpen(false);
       setForm(EMPTY_FORM);
+      setEditingSlug(null);
       fetchShows();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la création");
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Démarrer / arrêter une diffusion = changer son statut (PATCH).
+  const handleSetStatus = async (
+    slug: string,
+    status: "live" | "recorded"
+  ) => {
+    try {
+      await emissionsApi.update(slug, { status });
+      toast.success(status === "live" ? "Émission démarrée — en direct" : "Diffusion arrêtée");
+      fetchShows();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors du changement de statut");
     }
   };
 
@@ -143,14 +195,18 @@ export default function EmissionsPage() {
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90">
+            <Button className="bg-primary hover:bg-primary/90" onClick={openCreate}>
               <Plus className="mr-2 h-4 w-4" />Nouvelle Émission
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
-              <DialogTitle>Programmer une Émission</DialogTitle>
-              <DialogDescription>Créez une nouvelle émission en direct ou programmée.</DialogDescription>
+              <DialogTitle>{editingSlug ? "Modifier l'Émission" : "Programmer une Émission"}</DialogTitle>
+              <DialogDescription>
+                {editingSlug
+                  ? "Mettez à jour les informations de l'émission."
+                  : "Créez une nouvelle émission en direct ou programmée."}
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -183,8 +239,9 @@ export default function EmissionsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-              <Button className="bg-primary hover:bg-primary/90" onClick={handleCreate} disabled={submitting}>
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Programmer
+              <Button className="bg-primary hover:bg-primary/90" onClick={handleSubmit} disabled={submitting}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingSlug ? "Enregistrer" : "Programmer"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -248,6 +305,7 @@ export default function EmissionsPage() {
                 {/* Thumbnail */}
                 <div className="relative h-32 w-32 shrink-0 bg-muted">
                   <img src={show.cover_url || "/placeholder.svg"} alt={show.title}
+                    loading="lazy" decoding="async"
                     className="h-full w-full object-cover" />
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                     <Video className="h-8 w-8 text-white" />
@@ -280,12 +338,18 @@ export default function EmissionsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         {show.status === "scheduled" && (
-                          <DropdownMenuItem><Play className="mr-2 h-4 w-4" />Démarrer maintenant</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleSetStatus(show.slug, "live")}>
+                            <Play className="mr-2 h-4 w-4" />Démarrer maintenant
+                          </DropdownMenuItem>
                         )}
                         {show.status === "live" && (
-                          <DropdownMenuItem><Pause className="mr-2 h-4 w-4" />Arrêter la diffusion</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleSetStatus(show.slug, "recorded")}>
+                            <Pause className="mr-2 h-4 w-4" />Arrêter la diffusion
+                          </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem>Modifier</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(show)}>
+                          <Edit className="mr-2 h-4 w-4" />Modifier
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(show.slug)}>
                           Supprimer

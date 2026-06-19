@@ -102,6 +102,7 @@ export default function UtilisateursPage() {
     setLoading(true);
     try {
       const p = new URLSearchParams();
+      p.set("ordering", "-created_at"); // plus récents en premier
       p.set("page_size", String(PAGE_SIZE));
       if (searchQuery)          p.set("search",    searchQuery);
       if (filterRole   !== "all") p.set("role",      filterRole);

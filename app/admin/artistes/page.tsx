@@ -34,6 +34,7 @@ export default function ArtistesPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set("ordering", "-created_at"); // plus récents en premier
       if (searchQuery) params.set("search", searchQuery);
       if (featuredFilter === "featured") params.set("is_featured", "true");
       if (featuredFilter === "regular") params.set("is_featured", "false");
@@ -175,8 +176,8 @@ export default function ArtistesPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem><Eye className="mr-2 h-4 w-4" />Voir le profil</DropdownMenuItem>
-                    <DropdownMenuItem><Pencil className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                    <DropdownMenuItem asChild><Link href={`/admin/artistes/${artist.slug}`}><Eye className="mr-2 h-4 w-4" />Voir le profil</Link></DropdownMenuItem>
+                    <DropdownMenuItem asChild><Link href={`/admin/artistes/${artist.slug}/modifier`}><Pencil className="mr-2 h-4 w-4" />Modifier</Link></DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleToggleFeatured(artist)}>
                       <Star className="mr-2 h-4 w-4" />
                       {artist.is_featured ? "Retirer la mise en avant" : "Mettre en avant"}
@@ -256,8 +257,8 @@ export default function ArtistesPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem><Eye className="mr-2 h-4 w-4" />Voir le profil</DropdownMenuItem>
-                  <DropdownMenuItem><Pencil className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                  <DropdownMenuItem asChild><Link href={`/admin/artistes/${artist.slug}`}><Eye className="mr-2 h-4 w-4" />Voir le profil</Link></DropdownMenuItem>
+                  <DropdownMenuItem asChild><Link href={`/admin/artistes/${artist.slug}/modifier`}><Pencil className="mr-2 h-4 w-4" />Modifier</Link></DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleToggleFeatured(artist)}>
                     <Star className="mr-2 h-4 w-4" />
                     {artist.is_featured ? "Retirer" : "Mettre en avant"}

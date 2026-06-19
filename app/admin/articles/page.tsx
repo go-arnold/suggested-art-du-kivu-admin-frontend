@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, Filter, MoreHorizontal, Eye, Pencil,
@@ -57,6 +58,7 @@ function getCategoryName(cat: ArticleList["category"]): string {
 }
 
 export default function ArticlesPage() {
+  const router = useRouter();
   const [articles, setArticles] = useState<ArticleList[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -70,6 +72,7 @@ export default function ArticlesPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set("ordering", "-created_at"); // plus récents en premier
       params.set("page", String(page));
       params.set("page_size", String(PAGE_SIZE));
       if (searchQuery) params.set("search", searchQuery);
@@ -201,9 +204,13 @@ export default function ArticlesPage() {
                 return (
                   <TableRow
                     key={article.id}
-                    className={cn("group transition-colors", selectedIds.includes(article.id) && "bg-primary/5")}
+                    onClick={() => router.push(`/admin/articles/${article.slug}`)}
+                    className={cn(
+                      "group cursor-pointer transition-colors",
+                      selectedIds.includes(article.id) && "bg-primary/5"
+                    )}
                   >
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selectedIds.includes(article.id)}
                         onCheckedChange={() => toggleSelect(article.id)}
@@ -242,7 +249,7 @@ export default function ArticlesPage() {
                     <TableCell className="text-muted-foreground text-sm">
                       {getDisplayDate(article)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
@@ -251,8 +258,8 @@ export default function ArticlesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
-                            <Link href={`/admin/articles/${article.slug}/modifier`}>
-                              <Eye className="mr-2 h-4 w-4" />Prévisualiser
+                            <Link href={`/admin/articles/${article.slug}`}>
+                              <Eye className="mr-2 h-4 w-4" />Voir les détails
                             </Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild>

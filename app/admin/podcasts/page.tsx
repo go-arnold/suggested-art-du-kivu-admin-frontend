@@ -43,11 +43,13 @@ export default function PodcastsPage() {
   const [activeTab, setActiveTab] = useState("episodes");
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_EP);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setLoadingPodcasts(true);
-    podcastsApi.list()
+    // page_size élevé : charge toutes les séries pour le sélecteur (édition incluse)
+    podcastsApi.list("page_size=100")
       .then((d) => setPodcasts(d.results))
       .catch(() => toast.error("Erreur chargement podcasts"))
       .finally(() => setLoadingPodcasts(false));
@@ -57,6 +59,7 @@ export default function PodcastsPage() {
     setLoadingEpisodes(true);
     try {
       const params = new URLSearchParams();
+      params.set("ordering", "-created_at"); // plus récents en premier
       if (searchQuery) params.set("search", searchQuery);
       if (filterPodcast !== "all") params.set("series", filterPodcast);
       const data = await podcastsApi.episodes.list(params.toString());
@@ -70,23 +73,57 @@ export default function PodcastsPage() {
 
   useEffect(() => { fetchEpisodes(); }, [fetchEpisodes]);
 
-  const handleCreateEpisode = async () => {
+  const openCreate = () => {
+    setEditingSlug(null);
+    setForm(EMPTY_EP);
+    setIsCreateDialogOpen(true);
+  };
+
+  const openEdit = (ep: EpisodeList) => {
+    setEditingSlug(ep.slug);
+    // Résout l'ID de la série (la liste renvoie series_slug, pas toujours l'id)
+    let seriesId = ep.series?.id ? String(ep.series.id) : "";
+    if (!seriesId && ep.series_slug) {
+      const p = podcasts.find((x) => x.slug === ep.series_slug);
+      if (p) seriesId = String(p.id);
+    }
+    setForm({
+      title: ep.title ?? "",
+      description: ep.description ?? "",
+      series: seriesId,
+    });
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleSubmitEpisode = async () => {
     if (!form.title || !form.series) { toast.error("Titre et série requis"); return; }
     setSubmitting(true);
     try {
-      const payload: EpisodeWrite = {
-        title: form.title,
-        description: form.description,
-        series: Number(form.series),
-        status: "draft",
-      };
-      await podcastsApi.episodes.create(payload);
-      toast.success("Épisode créé");
+      if (editingSlug) {
+        // PATCH partiel : on ne réécrit pas published_at
+        await podcastsApi.episodes.update(editingSlug, {
+          title: form.title,
+          description: form.description,
+          series: Number(form.series),
+        });
+        toast.success("Épisode mis à jour");
+      } else {
+        const payload: EpisodeWrite = {
+          title: form.title,
+          description: form.description,
+          series: Number(form.series),
+          // published_at est requis par l'API (et "status" n'existe pas côté backend)
+          published_at: new Date().toISOString(),
+        };
+        await podcastsApi.episodes.create(payload);
+        toast.success("Épisode créé");
+      }
       setIsCreateDialogOpen(false);
       setForm(EMPTY_EP);
+      setEditingSlug(null);
       fetchEpisodes();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la création");
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
     } finally {
       setSubmitting(false);
     }
@@ -116,14 +153,18 @@ export default function PodcastsPage() {
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90">
+            <Button className="bg-primary hover:bg-primary/90" onClick={openCreate}>
               <Plus className="mr-2 h-4 w-4" />Nouvel Épisode
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Ajouter un Épisode</DialogTitle>
-              <DialogDescription>Créez un nouvel épisode pour l&apos;un de vos podcasts.</DialogDescription>
+              <DialogTitle>{editingSlug ? "Modifier l'Épisode" : "Ajouter un Épisode"}</DialogTitle>
+              <DialogDescription>
+                {editingSlug
+                  ? "Mettez à jour les informations de l'épisode."
+                  : "Créez un nouvel épisode pour l'un de vos podcasts."}
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -150,8 +191,9 @@ export default function PodcastsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Annuler</Button>
-              <Button className="bg-primary hover:bg-primary/90" onClick={handleCreateEpisode} disabled={submitting}>
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Créer l&apos;épisode
+              <Button className="bg-primary hover:bg-primary/90" onClick={handleSubmitEpisode} disabled={submitting}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingSlug ? "Enregistrer" : "Créer l'épisode"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -243,6 +285,7 @@ export default function PodcastsPage() {
                     <div className="relative h-16 w-16 flex-shrink-0 rounded-lg bg-muted">
                       <img src={ep.cover_url || "/placeholder.svg"}
                         alt={ep.series_title ?? ep.series?.title ?? "Podcast"}
+                        loading="lazy" decoding="async"
                         className="h-full w-full rounded-lg object-cover" />
                       <button
                         onClick={() => setPlayingId(playingId === ep.id ? null : ep.id)}
@@ -297,7 +340,9 @@ export default function PodcastsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(ep)}>
+                          <Edit className="mr-2 h-4 w-4" />Modifier
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteEpisode(ep.slug)}>
                           <Trash2 className="mr-2 h-4 w-4" />Supprimer
@@ -334,6 +379,7 @@ export default function PodcastsPage() {
                 <Card key={podcast.id} className="card-shadow overflow-hidden">
                   <div className="relative h-40 bg-muted">
                     <img src={podcast.cover_url || "/placeholder.svg"} alt={podcast.title}
+                      loading="lazy" decoding="async"
                       className="h-full w-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     {podcast.is_featured && (

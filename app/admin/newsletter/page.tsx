@@ -39,6 +39,7 @@ export default function NewsletterPage() {
     setLoading(true);
     try {
       const p = new URLSearchParams();
+      p.set("ordering", "-created_at"); // plus récents en premier
       p.set("page_size", String(PAGE_SIZE));
       p.set("page",      String(page));
       p.set("is_active", "true");

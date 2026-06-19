@@ -17,8 +17,21 @@ import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { RichTextEditor } from "@/components/admin/rich-text-editor";
+import dynamic from "next/dynamic";
 import { articlesApi, type ArticleCategory } from "@/lib/api";
+
+// Éditeur riche chargé à la demande (lazy) — allège le bundle initial de la page.
+const RichTextEditor = dynamic(
+  () => import("@/components/admin/rich-text-editor").then((m) => m.RichTextEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[500px] items-center justify-center rounded-xl bg-card card-shadow">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  }
+);
 
 export default function ModifierArticlePage() {
   const params = useParams<{ slug: string }>();
@@ -216,7 +229,7 @@ export default function ModifierArticlePage() {
               onChange={(e) => handleImageUpload(e.target.files?.[0])} />
             {featuredImage ? (
               <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-                <img src={featuredImage} alt="Aperçu" className="h-full w-full object-cover" />
+                <img src={featuredImage} alt="Aperçu" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 <Button variant="destructive" size="icon"
                   className="absolute top-2 right-2 h-8 w-8"
                   onClick={() => setFeaturedImage(null)}>
@@ -299,7 +312,7 @@ export default function ModifierArticlePage() {
           <DialogHeader><DialogTitle>Prévisualisation</DialogTitle></DialogHeader>
           <article className="space-y-4">
             {featuredImage && (
-              <img src={featuredImage} alt={title} className="aspect-video w-full rounded-lg object-cover" />
+              <img src={featuredImage} alt={title} loading="lazy" decoding="async" className="aspect-video w-full rounded-lg object-cover" />
             )}
             <div className="flex gap-2">
               {selectedCategory && <Badge variant="secondary">{selectedCategory.name}</Badge>}

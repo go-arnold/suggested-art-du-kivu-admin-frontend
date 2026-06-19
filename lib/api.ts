@@ -1,27 +1,89 @@
 /**
  * Art du Kivu API client
- * Base URL: https://jeremy-backend.onrender.com/api/v1
+ * Appels via le proxy same-origin /api/v1 (voir rewrites dans next.config.mjs)
+ * qui relaie vers le backend hébergé, ce qui évite les problèmes de CORS.
  */
 
-const BASE_URL = "https://jeremy-backend.onrender.com/api/v1";
+const BASE_URL = "/api/v1";
+
+// ─── Token refresh (SimpleJWT) ───────────────────────────────────────────────
+// L'access token expire vite. À la première 401, on tente de le rafraîchir via
+// le refresh token, puis on rejoue la requête. Une seule requête de refresh à
+// la fois (les appels concurrents partagent la même promesse).
+
+let refreshPromise: Promise<string | null> | null = null;
+
+function clearSession() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("current_user");
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  const refresh = localStorage.getItem("refresh_token");
+  if (!refresh) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${BASE_URL}/auth/token/refresh/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh }),
+    })
+      .then(async (r) => {
+        if (!r.ok) return null;
+        const data = await r.json().catch(() => null);
+        if (data?.access) {
+          localStorage.setItem("access_token", data.access);
+          if (data.refresh) localStorage.setItem("refresh_token", data.refresh);
+          return data.access as string;
+        }
+        return null;
+      })
+      .catch(() => null)
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
 
 // ─── Generic fetch helper ────────────────────────────────────────────────────
 
 async function apiFetch<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retry = false
 ): Promise<T> {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
+  // Pour un upload de fichier (FormData), on laisse le navigateur définir le
+  // Content-Type (avec la boundary multipart) — surtout pas application/json.
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
   });
+
+  // Token expiré / invalide : on rafraîchit puis on rejoue une fois.
+  if (res.status === 401 && !retry && typeof window !== "undefined") {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      return apiFetch<T>(path, options, true);
+    }
+    // Refresh impossible -> session terminée, retour au login.
+    clearSession();
+    if (!window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+    throw new Error("Session expirée, veuillez vous reconnecter.");
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
@@ -44,7 +106,8 @@ async function apiFetch<T>(
       } else if (typeof first === "string") {
         message = first;
       } else {
-        message = JSON.stringify(raw);
+        // Corps vide ou forme inattendue : on évite d'afficher "{}"
+        message = `Erreur HTTP ${res.status}`;
       }
     } else {
       message = `Erreur HTTP ${res.status}`;
@@ -93,6 +156,13 @@ export interface RegisterPayload {
 export const authApi = {
   login: (data: LoginPayload) =>
     apiFetch<JWT>("/auth/login/", { method: "POST", body: JSON.stringify(data) }),
+  // Connexion sociale Google : le backend attend access_token OU code
+  // (id_token non supporté). Renvoie un JWT comme /auth/login/.
+  google: (data: { access_token?: string; code?: string }) =>
+    apiFetch<JWT>("/auth/google/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   register: (data: RegisterPayload) =>
     apiFetch<{ detail: string }>("/auth/register/", {
       method: "POST",
@@ -179,6 +249,32 @@ export interface ArticleList {
   published_at: string | null;
 }
 
+export interface ArticleAuthor {
+  id: number;
+  username: string;
+  avatar_url: string | null;
+}
+
+/** Shape returned by GET /articles/{slug}/ (detail) */
+export interface ArticleDetail {
+  id: number;
+  title: string;
+  slug: string;
+  excerpt?: string;
+  content: string;
+  featured_image_url: string | null;
+  category: ArticleCategory | null;
+  tags: (string | { id: number; name: string; slug?: string })[];
+  author: ArticleAuthor;
+  article_type?: string;
+  read_time?: number;
+  view_count: number;
+  like_count: number;
+  is_featured: boolean;
+  status: "published" | "draft" | "scheduled";
+  published_at: string | null;
+}
+
 export interface ArticleWrite {
   title: string;
   content: string;
@@ -196,7 +292,7 @@ export const articlesApi = {
     apiFetch<PaginatedResponse<ArticleList>>(
       `/articles/${params ? `?${params}` : ""}`
     ),
-  get: (slug: string) => apiFetch<ArticleList>(`/articles/${slug}/`),
+  get: (slug: string) => apiFetch<ArticleDetail>(`/articles/${slug}/`),
   create: (data: ArticleWrite) =>
     apiFetch<ArticleList>("/articles/", {
       method: "POST",
@@ -304,7 +400,7 @@ export interface EventWrite {
   end_date?: string;
   venue_name: string;     // required by API
   venue_address?: string;
-  city?: string;          // city slug or name
+  city?: number | null;   // city primary key (ID)
   category: string;
   ticket_price?: number | null;
   ticket_link?: string;
@@ -329,6 +425,11 @@ export const eventsApi = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  // Variantes multipart pour l'upload de l'image (fichier).
+  createForm: (data: FormData) =>
+    apiFetch<EventList>("/events/", { method: "POST", body: data }),
+  updateForm: (slug: string, data: FormData) =>
+    apiFetch<EventList>(`/events/${slug}/`, { method: "PATCH", body: data }),
   delete: (slug: string) =>
     apiFetch<void>(`/events/${slug}/`, { method: "DELETE" }),
   featured: () => apiFetch<EventList[]>("/events/featured/"),
@@ -360,6 +461,7 @@ export interface EmissionWrite {
   scheduled_at: string;
   duration_minutes: number;
   stream_url?: string;
+  status?: "live" | "scheduled" | "recorded" | "cancelled";
 }
 
 export const emissionsApi = {
@@ -507,4 +609,26 @@ export interface HomeData {
 
 export const homeApi = {
   get: () => apiFetch<HomeData>("/home/"),
+};
+
+// ─── WebTV videos (médiathèque) ───────────────────────────────────────────────
+
+export interface VideoDetail {
+  id: number;
+  title: string;
+  slug: string;
+  description?: string;
+  thumbnail_url: string | null;
+  video_url?: string;
+  duration: string;
+  category: string;
+  location?: string;
+  view_count: number;
+  published_at: string | null;
+}
+
+export const videosApi = {
+  get: (slug: string) => apiFetch<VideoDetail>(`/webtv/videos/${slug}/`),
+  delete: (slug: string) =>
+    apiFetch<void>(`/webtv/videos/${slug}/`, { method: "DELETE" }),
 };

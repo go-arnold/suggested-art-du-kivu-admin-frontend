@@ -17,9 +17,22 @@ import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { RichTextEditor } from "@/components/admin/rich-text-editor";
+import dynamic from "next/dynamic";
 import { articlesApi, usersApi, type ArticleCategory, type User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+
+// Éditeur riche chargé à la demande (lazy) — allège le bundle initial de la page.
+const RichTextEditor = dynamic(
+  () => import("@/components/admin/rich-text-editor").then((m) => m.RichTextEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[500px] items-center justify-center rounded-xl bg-card card-shadow">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  }
+);
 
 export default function NewArticlePage() {
   const router = useRouter();
@@ -128,6 +141,15 @@ export default function NewArticlePage() {
   const authorDisplayName = (a: User) =>
     a.username || a.email?.split("@")[0] || `#${a.id}`;
 
+  // L'utilisateur connecté est l'auteur par défaut et doit toujours être
+  // proposé, même si /users/ ne le renvoie pas (pagination/permissions) ou échoue.
+  const authorOptions = useMemo<User[]>(() => {
+    if (!user) return authors;
+    return authors.some((a) => String(a.id) === String(user.id))
+      ? authors
+      : [user as User, ...authors];
+  }, [authors, user]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -145,15 +167,27 @@ export default function NewArticlePage() {
           <Button variant="outline" size="sm" onClick={() => setIsPreviewOpen(true)}>
             <Eye className="mr-2 h-4 w-4" />Prévisualiser
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => submit("draft")} disabled={publishing}>
-            {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <Save className="mr-2 h-4 w-4" />Brouillon
-          </Button>
-          <Button size="sm" onClick={() => submit(status === "scheduled" ? "scheduled" : "published")} disabled={publishing}>
-            {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <Send className="mr-2 h-4 w-4" />
-            {status === "scheduled" ? "Programmer" : "Publier"}
-          </Button>
+
+          {/* Le bouton d'action dépend du statut sélectionné :
+              - "Publier immédiatement" -> bouton Publier
+              - "Brouillon" / "Programmer" -> bouton d'enregistrement (sans publication) */}
+          {status === "published" ? (
+            <Button size="sm" onClick={() => submit("published")} disabled={publishing}>
+              {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Send className="mr-2 h-4 w-4" />Publier
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => submit(status)}
+              disabled={publishing}
+            >
+              {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Save className="mr-2 h-4 w-4" />
+              {status === "scheduled" ? "Programmer" : "Brouillon"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -224,11 +258,18 @@ export default function NewArticlePage() {
                       <SelectValue placeholder="Sélectionner un auteur" />
                     </SelectTrigger>
                     <SelectContent>
-                      {authors.map((a) => (
+                      {authorOptions.map((a) => (
                         <SelectItem key={a.id} value={String(a.id)}>
                           <div className="flex items-center gap-2">
                             <span>{authorDisplayName(a)}</span>
-                            <span className="text-xs text-muted-foreground capitalize">({a.role})</span>
+                            {user && String(a.id) === String(user.id) && (
+                              <span className="text-xs font-medium text-primary">(vous)</span>
+                            )}
+                            {a.role && (
+                              <span className="text-xs text-muted-foreground capitalize">
+                                ({a.role})
+                              </span>
+                            )}
                           </div>
                         </SelectItem>
                       ))}
@@ -246,7 +287,7 @@ export default function NewArticlePage() {
               onChange={(e) => handleImageUpload(e.target.files?.[0])} />
             {featuredImage ? (
               <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-                <img src={featuredImage} alt="Aperçu" className="h-full w-full object-cover" />
+                <img src={featuredImage} alt="Aperçu" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 <Button variant="destructive" size="icon"
                   className="absolute top-2 right-2 h-8 w-8"
                   onClick={() => setFeaturedImage(null)}>
@@ -338,7 +379,7 @@ export default function NewArticlePage() {
           <DialogHeader><DialogTitle>Prévisualisation</DialogTitle></DialogHeader>
           <article className="space-y-4">
             {featuredImage && (
-              <img src={featuredImage} alt={title} className="aspect-video w-full rounded-lg object-cover" />
+              <img src={featuredImage} alt={title} loading="lazy" decoding="async" className="aspect-video w-full rounded-lg object-cover" />
             )}
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               {selectedCategory && <Badge variant="secondary">{selectedCategory.name}</Badge>}

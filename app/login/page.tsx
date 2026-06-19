@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import { GoogleLoginButton } from "@/components/auth/google-login-button";
 
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
@@ -113,6 +114,16 @@ export default function LoginPage() {
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Se connecter
           </Button>
+
+          {/* Séparateur + connexion Google */}
+          <div className="relative">
+            <span className="absolute inset-x-0 top-1/2 h-px bg-border" />
+            <span className="relative mx-auto block w-fit bg-card px-2 text-xs text-muted-foreground">
+              ou
+            </span>
+          </div>
+
+          <GoogleLoginButton disabled={submitting} />
 
           <div className="text-center">
             <Link href="/forgot-password"
