@@ -242,7 +242,6 @@ export default function NewsletterPage() {
                           })
                         : "—"}
                     </TableCell>
-                    </TableCell>
                   </TableRow>
                 );
               })}
