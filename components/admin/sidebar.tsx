@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Music,
   Calendar,
+  CalendarDays,
   Newspaper,
   Mic2,
   Radio,
@@ -54,6 +55,11 @@ const menuItems = [
       { title: "Podcasts", href: "/admin/podcasts", icon: Mic2 },
       { title: "Émissions Live", href: "/admin/emissions", icon: Radio },
     ],
+  },
+  {
+    title: "Planning",
+    href: "/admin/planning",
+    icon: CalendarDays,
   },
   {
     title: "Médiathèque",
