@@ -18,7 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth";
-import { eventsApi, articlesApi } from "@/lib/api";
+import { eventsApi, articlesApi, searchApi, type SearchResult } from "@/lib/api";
 
 // ── Static quick actions ──────────────────────────────────────────────────────
 
@@ -69,8 +69,40 @@ export function AdminNavbar({ sidebarCollapsed, onMobileMenuOpen }: AdminNavbarP
   const router     = useRouter();
   const { user, logout } = useAuth();
 
-  const [searchOpen,  setSearchOpen]  = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen,    setSearchOpen]    = useState(false);
+  const [searchQuery,   setSearchQuery]   = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  // Recherche globale (debouncée) via /search/
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!searchOpen || q.length < 2) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    const t = setTimeout(async () => {
+      try { setSearchResults((await searchApi.query(q)).results.slice(0, 8)); }
+      catch { setSearchResults([]); }
+      finally { setSearchLoading(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery, searchOpen]);
+
+  const SEARCH_HREF: Record<string, string> = {
+    artists: "/admin/artistes", articles: "/admin/articles", events: "/admin/evenements",
+    podcast_series: "/admin/podcasts", podcast_episodes: "/admin/podcasts",
+    webtv_videos: "/admin/mediatheque", releases: "/admin", community_posts: "/admin",
+  };
+  const SEARCH_LABEL: Record<string, string> = {
+    artists: "Artiste", articles: "Article", events: "Événement",
+    podcast_series: "Podcast", podcast_episodes: "Épisode", webtv_videos: "Vidéo",
+    releases: "Sortie", community_posts: "Post",
+  };
+  const openResult = (r: SearchResult) => {
+    setSearchOpen(false); setSearchQuery(""); setSearchResults([]);
+    const base = SEARCH_HREF[r.type] ?? "/admin";
+    // Pages détail disponibles : artistes & articles
+    router.push(r.type === "artists" || r.type === "articles" ? `${base}/${r.slug}` : base);
+  };
   const [notifs,      setNotifs]      = useState<Notif[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -195,6 +227,30 @@ export function AdminNavbar({ sidebarCollapsed, onMobileMenuOpen }: AdminNavbarP
                 onClick={() => { setSearchOpen(false); setSearchQuery(""); }}>
                 <X className="h-4 w-4" />
               </Button>
+
+              {/* Résultats */}
+              {searchQuery.trim().length >= 2 && (
+                <div className="absolute right-0 top-11 z-50 w-72 overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-lg sm:w-96">
+                  {searchLoading ? (
+                    <p className="p-3 text-sm text-muted-foreground">Recherche…</p>
+                  ) : searchResults.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground">Aucun résultat</p>
+                  ) : (
+                    searchResults.map((r) => (
+                      <button
+                        key={`${r.type}-${r.id}`}
+                        onClick={() => openResult(r)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted"
+                      >
+                        <span className="flex-1 truncate">{r.title}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {SEARCH_LABEL[r.type] ?? r.type}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setSearchOpen(true)}>

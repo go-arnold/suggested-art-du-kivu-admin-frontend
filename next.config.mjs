@@ -2,7 +2,7 @@
 
 // URL du backend hébergé. Surchargeable via la variable d'env BACKEND_API_URL.
 const BACKEND_API_URL =
-  process.env.BACKEND_API_URL || "https://jeremy-backend.onrender.com/api/v1"
+  process.env.BACKEND_API_URL || "https://art-du-kivu-api.kelor.tech/api/v1"
 
 const nextConfig = {
   typescript: {

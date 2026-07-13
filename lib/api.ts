@@ -220,8 +220,12 @@ export const usersApi = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  delete: (id: number) =>
-    apiFetch<void>(`/users/${id}/`, { method: "DELETE" }),
+  // Pas de DELETE /users/{id}/ ; suppression via l'action groupée.
+  bulkDelete: (ids: number[]) =>
+    apiFetch<void>("/users/bulk_delete/", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
 };
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
@@ -231,6 +235,12 @@ export interface ArticleCategory {
   name: string;
   slug: string;
   color: string;
+}
+
+export interface ArticleTag {
+  id: number;
+  name: string;
+  slug: string;
 }
 
 /** Shape returned by GET /articles/ list */
@@ -278,13 +288,18 @@ export interface ArticleDetail {
 export interface ArticleWrite {
   title: string;
   content: string;
-  category: number | string; // API expects category ID (integer)
-  status: "published" | "draft" | "scheduled";
-  tags?: string[];
+  // enum backend : draft | published uniquement. La programmation se fait via
+  // status="published" + scheduled_at (date future).
+  status: "published" | "draft";
+  category?: number | null;   // ID catégorie (integer nullable)
+  author?: number | null;     // ID auteur (integer nullable)
+  excerpt?: string;
+  article_type?: "blog" | "magazine";
+  tags?: number[];            // IDs de tags (voir resolveTagIds)
   featured_image?: string;
   is_featured?: boolean;
-  allow_comments?: boolean;
-  published_at?: string;
+  read_time?: number;
+  scheduled_at?: string;
 }
 
 export const articlesApi = {
@@ -306,7 +321,43 @@ export const articlesApi = {
   delete: (slug: string) =>
     apiFetch<void>(`/articles/${slug}/`, { method: "DELETE" }),
   categories: () => apiFetch<ArticleCategory[]>("/articles/categories/"),
+  tags: (params?: string) =>
+    apiFetch<PaginatedResponse<ArticleTag>>(`/articles/tags/${params ? `?${params}` : ""}`),
+  createTag: (name: string) =>
+    apiFetch<ArticleTag>("/articles/tags/", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
 };
+
+/**
+ * Résout des tags saisis en texte libre vers des IDs (l'API attend des IDs).
+ * Réutilise les tags existants (match insensible à la casse) et crée les manquants.
+ */
+export async function resolveTagIds(names: string[]): Promise<number[]> {
+  const clean = names.map((n) => n.trim()).filter(Boolean);
+  if (!clean.length) return [];
+  let existing: ArticleTag[] = [];
+  try {
+    existing = (await articlesApi.tags("page_size=100")).results;
+  } catch {
+    /* liste indisponible : on tentera la création */
+  }
+  const byName = new Map(existing.map((t) => [t.name.toLowerCase(), t]));
+  const ids: number[] = [];
+  for (const name of clean) {
+    const found = byName.get(name.toLowerCase());
+    if (found) { ids.push(found.id); continue; }
+    try {
+      const created = await articlesApi.createTag(name);
+      ids.push(created.id);
+      byName.set(name.toLowerCase(), created);
+    } catch {
+      /* échec de création : on ignore ce tag */
+    }
+  }
+  return ids;
+}
 
 // ─── Artists ──────────────────────────────────────────────────────────────────
 
@@ -439,6 +490,9 @@ export const eventsApi = {
 // ─── Emissions ────────────────────────────────────────────────────────────────
 
 /** Shape returned by GET /emissions/ list */
+/** Statut d'une émission (enum backend Status9c3Enum). */
+export type EmissionStatus = "live" | "scheduled" | "recorded";
+
 export interface EmissionList {
   id: number;
   title: string;
@@ -446,8 +500,8 @@ export interface EmissionList {
   description?: string;
   cover_url: string | null;
   stream_url?: string;
-  status: "live" | "scheduled" | "recorded" | "cancelled";
-  scheduled_at: string;
+  status: EmissionStatus;
+  scheduled_at: string | null;   // nullable côté backend
   duration_minutes: number;
   viewer_count: number;
   total_views: number;
@@ -456,12 +510,18 @@ export interface EmissionList {
 }
 
 export interface EmissionWrite {
-  title: string;
-  description: string;
-  scheduled_at: string;
-  duration_minutes: number;
+  title: string;                 // seul champ requis côté backend
+  description?: string;
+  scheduled_at?: string | null;  // nullable
+  duration_minutes?: number;
   stream_url?: string;
-  status?: "live" | "scheduled" | "recorded" | "cancelled";
+  status?: EmissionStatus;
+}
+
+/** Détail émission avec les URLs de lecture Cloudflare Stream */
+export interface EmissionDetail extends EmissionList {
+  cf_playback_hls_url?: string;
+  cf_playback_dash_url?: string;
 }
 
 export const emissionsApi = {
@@ -469,7 +529,10 @@ export const emissionsApi = {
     apiFetch<PaginatedResponse<EmissionList>>(
       `/emissions/${params ? `?${params}` : ""}`
     ),
-  get: (slug: string) => apiFetch<EmissionList>(`/emissions/${slug}/`),
+  get: (slug: string) => apiFetch<EmissionDetail>(`/emissions/${slug}/`),
+  // Enregistre un partage (comptabilisé même en anonyme)
+  share: (slug: string) =>
+    apiFetch<{ share_count?: number }>(`/emissions/${slug}/share/`, { method: "POST" }),
   create: (data: EmissionWrite) =>
     apiFetch<EmissionList>("/emissions/", {
       method: "POST",
@@ -483,6 +546,14 @@ export const emissionsApi = {
   delete: (slug: string) =>
     apiFetch<void>(`/emissions/${slug}/`, { method: "DELETE" }),
   live: () => apiFetch<EmissionList[]>("/emissions/live/"),
+  // Démarrer / arrêter la diffusion (Cloudflare Stream). go_live renvoie les
+  // identifiants RTMPS (à afficher une seule fois pour OBS).
+  goLive: (slug: string) =>
+    apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+      `/emissions/${slug}/go_live/`, { method: "POST" }
+    ),
+  endLive: (slug: string) =>
+    apiFetch<void>(`/emissions/${slug}/end_live/`, { method: "POST" }),
 };
 
 // ─── Podcasts ─────────────────────────────────────────────────────────────────
@@ -529,11 +600,21 @@ export interface EpisodeList {
 
 export interface EpisodeWrite {
   title: string;
-  description: string;
   series: number;
-  audio_url?: string;
-  status?: "published" | "draft" | "scheduled";
-  published_at?: string;
+  published_at: string;       // requis par le backend (date-time ISO)
+  description?: string;
+  audio_url?: string;         // lien du fichier audio (uri, max 200)
+  duration?: string;          // ex. "12:34" (max 10)
+  episode_number?: number;
+  season_number?: number;
+  is_featured?: boolean;
+}
+
+export interface PodcastSeriesWrite {
+  title: string;
+  category: string;      // slug: talk | culture | musique | societe | jeunesse | sport
+  description?: string;
+  is_featured?: boolean;
 }
 
 export const podcastsApi = {
@@ -542,6 +623,11 @@ export const podcastsApi = {
       `/podcasts/${params ? `?${params}` : ""}`
     ),
   get: (slug: string) => apiFetch<PodcastSeriesList>(`/podcasts/${slug}/`),
+  create: (data: PodcastSeriesWrite) =>
+    apiFetch<PodcastSeriesList>("/podcasts/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   episodes: {
     list: (params?: string) =>
@@ -565,7 +651,7 @@ export const podcastsApi = {
   },
 
   categories: () =>
-    apiFetch<{ id: number; name: string }[]>("/podcasts/categories/"),
+    apiFetch<{ id: string; label: string }[]>("/podcasts/categories/"),
 };
 
 // ─── Releases ─────────────────────────────────────────────────────────────────
@@ -583,6 +669,20 @@ export interface ReleaseList {
   artist_slug: string;
 }
 
+/** Formats valides (enum backend Format088Enum). */
+export type ReleaseFormat = "album" | "single" | "clip" | "documentaire" | "expo";
+
+export interface ReleaseWrite {
+  artist: number;              // ID artiste (requis)
+  title: string;               // requis
+  format: ReleaseFormat;       // requis
+  release_date: string;        // requis (date YYYY-MM-DD)
+  description?: string;
+  preview_url?: string;
+  is_featured?: boolean;
+  is_premiere?: boolean;
+}
+
 export const releasesApi = {
   list: (params?: string) =>
     apiFetch<PaginatedResponse<ReleaseList>>(
@@ -590,6 +690,13 @@ export const releasesApi = {
     ),
   featured: () => apiFetch<ReleaseList[]>("/releases/featured/"),
   calendar: () => apiFetch<ReleaseList[]>("/releases/calendar/"),
+  get: (slug: string) => apiFetch<ReleaseList>(`/releases/${slug}/`),
+  create: (data: ReleaseWrite) =>
+    apiFetch<ReleaseList>("/releases/", { method: "POST", body: JSON.stringify(data) }),
+  update: (slug: string, data: Partial<ReleaseWrite>) =>
+    apiFetch<ReleaseList>(`/releases/${slug}/`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (slug: string) =>
+    apiFetch<void>(`/releases/${slug}/`, { method: "DELETE" }),
 };
 
 // ─── Home / Dashboard ─────────────────────────────────────────────────────────
@@ -613,22 +720,440 @@ export const homeApi = {
 
 // ─── WebTV videos (médiathèque) ───────────────────────────────────────────────
 
-export interface VideoDetail {
+export interface VideoListItem {
   id: number;
   title: string;
   slug: string;
-  description?: string;
   thumbnail_url: string | null;
-  video_url?: string;
   duration: string;
   category: string;
+  is_premier: boolean;
+  is_live: boolean;
   location?: string;
   view_count: number;
   published_at: string | null;
 }
 
+export interface VideoDetail extends VideoListItem {
+  description?: string;
+  video_url?: string;
+  cf_playback_hls_url?: string;
+  cf_playback_dash_url?: string;
+}
+
+export interface VideoWrite {
+  title: string;
+  video_url: string;
+  category: string;
+  published_at: string;
+  description?: string;
+  duration?: string;
+  location?: string;
+  is_premier?: boolean;
+  thumbnail?: string;
+}
+
 export const videosApi = {
+  list: (params?: string) =>
+    apiFetch<PaginatedResponse<VideoListItem>>(
+      `/webtv/videos/${params ? `?${params}` : ""}`
+    ),
+  live: () => apiFetch<VideoListItem[]>("/webtv/videos/live/"),
   get: (slug: string) => apiFetch<VideoDetail>(`/webtv/videos/${slug}/`),
+  create: (data: VideoWrite) =>
+    apiFetch<VideoDetail>("/webtv/videos/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   delete: (slug: string) =>
     apiFetch<void>(`/webtv/videos/${slug}/`, { method: "DELETE" }),
+  share: (slug: string) =>
+    apiFetch<{ share_count?: number }>(`/webtv/videos/${slug}/share/`, { method: "POST" }),
+  goLive: (slug: string) =>
+    apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+      `/webtv/videos/${slug}/go_live/`, { method: "POST" }
+    ),
+  endLive: (slug: string) =>
+    apiFetch<void>(`/webtv/videos/${slug}/end_live/`, { method: "POST" }),
+  bulkDelete: (ids: number[]) =>
+    apiFetch<void>("/webtv/videos/bulk_delete/", { method: "POST", body: JSON.stringify({ ids }) }),
+};
+
+// ─── Analytics (admin) ────────────────────────────────────────────────────────
+
+export interface DashboardCounts {
+  artists?: number;
+  articles?: number;
+  events?: number;
+  event_registrations?: number;
+  podcast_series?: number;
+  podcast_episodes?: number;
+  radio_programs?: number;
+  webtv_videos?: number;
+  releases?: number;
+}
+
+export interface DashboardTotals {
+  article_views?: number;
+  article_likes?: number;
+  webtv_views?: number;
+  podcast_plays?: number;
+  post_likes?: number;
+}
+
+export interface DashboardStats {
+  counts: DashboardCounts;
+  totals: DashboardTotals;
+  top_articles: { id: number; title: string; slug: string; view_count: number }[];
+  top_webtv_videos: { id: number; title: string; slug: string; view_count: number }[];
+  top_podcast_episodes: { id: number; title: string; slug: string; play_count: number }[];
+}
+
+export const analyticsApi = {
+  dashboard: () => apiFetch<DashboardStats>("/analytics/dashboard/"),
+};
+
+// ─── Recherche unifiée ────────────────────────────────────────────────────────
+
+export interface SearchResult {
+  type: string;
+  id: number;
+  slug: string;
+  title: string;
+  image_url: string | null;
+  score?: number;
+}
+
+export interface SearchResponse {
+  count: number;
+  page: number;
+  page_size: number;
+  results: SearchResult[];
+}
+
+export const searchApi = {
+  query: (q: string, type?: string) => {
+    const p = new URLSearchParams({ q });
+    if (type) p.set("type", type);
+    return apiFetch<SearchResponse>(`/search/?${p.toString()}`);
+  },
+};
+
+// ─── Newsletter ───────────────────────────────────────────────────────────────
+
+export interface NewsletterSubscriber {
+  id: number;
+  email: string;
+  is_confirmed: boolean;
+  is_active: boolean;
+  subscribed_at?: string;
+  confirmed_at?: string | null;
+}
+
+export interface NewsletterCampaign {
+  id: number;
+  subject: string;
+  body_html?: string;
+  status?: string;
+  created_by_name?: string;
+  recipient_count?: number;
+  created_at?: string;
+  sent_at?: string | null;
+}
+
+export const newsletterApi = {
+  subscribers: (params?: string) =>
+    apiFetch<PaginatedResponse<NewsletterSubscriber>>(
+      `/newsletter/subscribers/${params ? `?${params}` : ""}`
+    ),
+  campaigns: {
+    list: (params?: string) =>
+      apiFetch<PaginatedResponse<NewsletterCampaign>>(
+        `/newsletter/campaigns/${params ? `?${params}` : ""}`
+      ),
+    create: (data: { subject: string; body_html: string }) =>
+      apiFetch<NewsletterCampaign>("/newsletter/campaigns/", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    send: (id: number) =>
+      apiFetch<{ detail?: string }>(`/newsletter/campaigns/${id}/send/`, {
+        method: "POST",
+      }),
+  },
+};
+
+// ─── Radio ────────────────────────────────────────────────────────────────────
+
+export type RadioStatus = "live" | "upcoming" | "ended";
+
+export interface RadioProgram {
+  id: number;
+  title: string;
+  slug: string;
+  description?: string;
+  cover_url: string | null;
+  start_time: string;          // "HH:MM:SS"
+  end_time: string;
+  day_of_week: number;         // 0..6
+  day_name?: string;
+  presenter?: string;
+  status: RadioStatus;
+  stream_url?: string;
+  cf_playback_hls_url?: string;
+  cf_playback_dash_url?: string;
+  listener_count?: number;
+}
+
+export interface RadioProgramWrite {
+  title: string;               // requis
+  start_time: string;          // requis "HH:MM"
+  end_time: string;            // requis
+  description?: string;
+  day_of_week?: number;
+  presenter?: string;
+  status?: RadioStatus;
+  stream_url?: string;
+}
+
+export const radioApi = {
+  list: (params?: string) =>
+    apiFetch<PaginatedResponse<RadioProgram>>(`/radio/program/${params ? `?${params}` : ""}`),
+  current: () => apiFetch<RadioProgram | null>("/radio/current/"),
+  get: (id: number) => apiFetch<RadioProgram>(`/radio/program/${id}/`),
+  create: (data: RadioProgramWrite) =>
+    apiFetch<RadioProgram>("/radio/program/", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<RadioProgramWrite>) =>
+    apiFetch<RadioProgram>(`/radio/program/${id}/`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (id: number) =>
+    apiFetch<void>(`/radio/program/${id}/`, { method: "DELETE" }),
+  goLive: (id: number) =>
+    apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+      `/radio/program/${id}/go_live/`, { method: "POST" }),
+  endLive: (id: number) =>
+    apiFetch<void>(`/radio/program/${id}/end_live/`, { method: "POST" }),
+};
+
+// ─── Live Music ───────────────────────────────────────────────────────────────
+
+export type MusicSessionStatus = "live" | "scheduled" | "ended";
+
+export interface MusicLiveSession {
+  id: number;
+  title: string;
+  slug: string;
+  artist_names?: string;
+  status: MusicSessionStatus;
+  cf_playback_hls_url?: string;
+  cf_playback_dash_url?: string;
+  online_followers?: string;
+  live_started_at?: string | null;
+  created_at?: string;
+}
+
+export interface MusicLiveSessionWrite {
+  title: string;               // seul champ requis
+  artists?: number[];
+  status?: MusicSessionStatus;
+}
+
+export interface MusicLiveSlot {
+  id: number;
+  title: string;
+  artist_name?: string;
+  day_of_week: number;
+  day_name?: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes?: number;
+}
+
+export interface MusicLiveSlotWrite {
+  title: string;               // requis
+  start_time: string;          // requis
+  end_time: string;            // requis
+  artist?: number | null;
+  day_of_week?: number;
+  duration_minutes?: number;
+}
+
+export const liveMusicApi = {
+  sessions: {
+    list: (params?: string) =>
+      apiFetch<PaginatedResponse<MusicLiveSession>>(`/live_music/sessions/${params ? `?${params}` : ""}`),
+    current: () => apiFetch<MusicLiveSession | null>("/live_music/sessions/current/"),
+    get: (slug: string) => apiFetch<MusicLiveSession>(`/live_music/sessions/${slug}/`),
+    create: (data: MusicLiveSessionWrite) =>
+      apiFetch<MusicLiveSession>("/live_music/sessions/", { method: "POST", body: JSON.stringify(data) }),
+    update: (slug: string, data: Partial<MusicLiveSessionWrite>) =>
+      apiFetch<MusicLiveSession>(`/live_music/sessions/${slug}/`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (slug: string) =>
+      apiFetch<void>(`/live_music/sessions/${slug}/`, { method: "DELETE" }),
+    goLive: (slug: string) =>
+      apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+        `/live_music/sessions/${slug}/go_live/`, { method: "POST" }),
+    endLive: (slug: string) =>
+      apiFetch<void>(`/live_music/sessions/${slug}/end_live/`, { method: "POST" }),
+  },
+  programme: {
+    list: (params?: string) =>
+      apiFetch<PaginatedResponse<MusicLiveSlot>>(`/live_music/programme/${params ? `?${params}` : ""}`),
+    create: (data: MusicLiveSlotWrite) =>
+      apiFetch<MusicLiveSlot>("/live_music/programme/", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: number, data: Partial<MusicLiveSlotWrite>) =>
+      apiFetch<MusicLiveSlot>(`/live_music/programme/${id}/`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (id: number) =>
+      apiFetch<void>(`/live_music/programme/${id}/`, { method: "DELETE" }),
+  },
+};
+
+// ─── Community ────────────────────────────────────────────────────────────────
+
+export type PostType = "talent" | "art" | "news";
+
+export interface CommunityPost {
+  id: number;
+  author_name?: string;
+  author_avatar?: string | null;
+  title?: string;
+  content: string;
+  media?: string | null;
+  post_type: PostType;
+  like_count?: number;
+  comment_count?: string | number;
+  created_at?: string;
+}
+
+export interface CommunityPostWrite {
+  content: string;             // requis (max 2000)
+  post_type: PostType;         // requis
+}
+
+export interface PollOption {
+  id?: number;
+  text?: string;
+  label?: string;
+  vote_count?: number;
+}
+
+export interface Poll {
+  id: number;
+  question: string;
+  vote_count?: number;
+  options?: PollOption[];
+  expires_at?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface PollWrite {
+  question: string;            // requis
+  options?: string[];
+  expires_at?: string | null;
+  is_active?: boolean;
+}
+
+export interface Challenge {
+  id: number;
+  title: string;
+  slug: string;
+  description?: string;
+  cover_url?: string | null;
+  prize?: string;
+  deadline: string;
+  participant_count?: number;
+  is_active?: boolean;
+}
+
+export interface ChallengeWrite {
+  title: string;               // requis
+  slug: string;                // requis
+  description: string;         // requis
+  deadline: string;            // requis (date-time ISO)
+  prize?: string;
+  is_active?: boolean;
+}
+
+export const communityApi = {
+  posts: {
+    list: (params?: string) =>
+      apiFetch<PaginatedResponse<CommunityPost>>(`/community/posts/${params ? `?${params}` : ""}`),
+    get: (id: number) => apiFetch<CommunityPost>(`/community/posts/${id}/`),
+    create: (data: CommunityPostWrite) =>
+      apiFetch<CommunityPost>("/community/posts/", { method: "POST", body: JSON.stringify(data) }),
+    delete: (id: number) =>
+      apiFetch<void>(`/community/posts/${id}/`, { method: "DELETE" }),
+  },
+  polls: {
+    list: (params?: string) =>
+      apiFetch<PaginatedResponse<Poll>>(`/community/polls/${params ? `?${params}` : ""}`),
+    create: (data: PollWrite) =>
+      apiFetch<Poll>("/community/polls/", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: number, data: Partial<PollWrite>) =>
+      apiFetch<Poll>(`/community/polls/${id}/`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (id: number) =>
+      apiFetch<void>(`/community/polls/${id}/`, { method: "DELETE" }),
+  },
+  challenges: {
+    list: (params?: string) =>
+      apiFetch<PaginatedResponse<Challenge>>(`/community/challenges/${params ? `?${params}` : ""}`),
+    get: (slug: string) => apiFetch<Challenge>(`/community/challenges/${slug}/`),
+    create: (data: ChallengeWrite) =>
+      apiFetch<Challenge>("/community/challenges/", { method: "POST", body: JSON.stringify(data) }),
+    update: (slug: string, data: Partial<ChallengeWrite>) =>
+      apiFetch<Challenge>(`/community/challenges/${slug}/`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (slug: string) =>
+      apiFetch<void>(`/community/challenges/${slug}/`, { method: "DELETE" }),
+  },
+};
+
+// ─── Modération : commentaires & chat ─────────────────────────────────────────
+
+/** Un commentaire (forme souple : les champs varient légèrement selon la ressource). */
+export interface CommentItem {
+  id: number;
+  author_name?: string;
+  author_avatar?: string | null;
+  content?: string;
+  text?: string;
+  body?: string;
+  created_at?: string;
+}
+
+/**
+ * Commentaires génériques. `resource` = préfixe complet du chemin :
+ * "articles" | "emissions" | "webtv/videos" | "releases" |
+ * "live_music/sessions" | "podcasts/episodes" | "community/posts".
+ * `id` = slug ou id numérique selon la ressource.
+ */
+export const commentsApi = {
+  list: (resource: string, id: string | number) =>
+    apiFetch<PaginatedResponse<CommentItem>>(`/${resource}/${id}/comments/`),
+  remove: (resource: string, id: string | number, commentId: number) =>
+    apiFetch<void>(`/${resource}/${id}/comments/${commentId}/`, { method: "DELETE" }),
+};
+
+/** Un message de chat live. */
+export interface ChatMessage {
+  id: number;
+  author_name?: string;
+  username?: string;
+  content?: string;
+  message?: string;
+  text?: string;
+  created_at?: string;
+}
+
+/** Chat par ressource live (webtv/videos, live_music/sessions). */
+export const chatApi = {
+  list: (resource: string, slug: string) =>
+    apiFetch<PaginatedResponse<ChatMessage>>(`/${resource}/${slug}/chat/`),
+  remove: (resource: string, slug: string, messageId: number) =>
+    apiFetch<void>(`/${resource}/${slug}/chat/${messageId}/`, { method: "DELETE" }),
+};
+
+/** Chat radio (global, pas par programme). */
+export const radioChatApi = {
+  list: () => apiFetch<PaginatedResponse<ChatMessage>>("/radio/chat/"),
+  remove: (id: number) => apiFetch<void>(`/radio/chat/${id}/`, { method: "DELETE" }),
 };

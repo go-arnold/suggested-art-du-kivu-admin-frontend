@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, Filter, MoreHorizontal, Eye, Pencil,
-  Trash2, ChevronLeft, ChevronRight, Loader2,
+  Trash2, ChevronLeft, ChevronRight, Loader2, MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,8 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { articlesApi, type ArticleList, type ArticleCategory } from "@/lib/api";
+import { articlesApi, commentsApi, type ArticleList, type ArticleCategory } from "@/lib/api";
+import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
@@ -67,6 +68,7 @@ export default function ArticlesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [comments, setComments] = useState<ArticleList | null>(null);
 
   const fetchArticles = useCallback(async () => {
     setLoading(true);
@@ -267,6 +269,9 @@ export default function ArticlesPage() {
                               <Pencil className="mr-2 h-4 w-4" />Modifier
                             </Link>
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setComments(article)}>
+                            <MessageSquare className="mr-2 h-4 w-4" />Commentaires
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive"
@@ -312,6 +317,17 @@ export default function ArticlesPage() {
           </div>
         )}
       </div>
+
+      {/* Modération des commentaires */}
+      {comments && (
+        <ModerationDialog
+          open onOpenChange={(o) => !o && setComments(null)}
+          title={`Commentaires — ${comments.title}`}
+          emptyLabel="Aucun commentaire sur cet article."
+          load={() => commentsApi.list("articles", comments.slug).then((r) => r.results.map(commentToMod))}
+          remove={(cid) => commentsApi.remove("articles", comments.slug, cid)}
+        />
+      )}
     </div>
   );
 }

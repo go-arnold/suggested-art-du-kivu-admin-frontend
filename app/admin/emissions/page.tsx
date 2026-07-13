@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Radio, Calendar, Clock, Eye, MoreHorizontal, Plus, Search, Filter,
-  Wifi, WifiOff, Video, Loader2, Play, Pause, Edit,
+  Wifi, WifiOff, Video, Loader2, Play, Pause, Edit, Share2, Headphones, Copy,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { emissionsApi, type EmissionList, type EmissionWrite } from "@/lib/api";
+import { emissionsApi, commentsApi, type EmissionList, type EmissionWrite, type EmissionDetail, type EmissionStatus } from "@/lib/api";
+import { HlsPlayer } from "@/components/admin/hls-player";
+import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { toast } from "sonner";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -47,8 +50,6 @@ function getStatusBadge(status: EmissionList["status"]) {
           <WifiOff className="mr-1 h-3 w-3" />Enregistré
         </Badge>
       );
-    case "cancelled":
-      return <Badge variant="destructive">Annulé</Badge>;
     default:
       return null;
   }
@@ -66,6 +67,7 @@ function formatDuration(minutes: number) {
 const EMPTY_FORM: EmissionWrite = {
   title: "",
   description: "",
+  status: "scheduled",
   scheduled_at: "",
   duration_minutes: 60,
 };
@@ -81,6 +83,9 @@ export default function EmissionsPage() {
   const [form,        setForm]        = useState<EmissionWrite>(EMPTY_FORM);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [submitting,  setSubmitting]  = useState(false);
+  const [watch,       setWatch]       = useState<{ show: EmissionList; detail: EmissionDetail | null } | null>(null);
+  const [liveCreds,   setLiveCreds]   = useState<{ title: string; url: string; key: string } | null>(null);
+  const [comments,    setComments]    = useState<EmissionList | null>(null);
 
   const fetchShows = useCallback(async () => {
     setLoading(true);
@@ -112,6 +117,7 @@ export default function EmissionsPage() {
     setForm({
       title: show.title,
       description: show.description ?? "",
+      status: show.status,
       scheduled_at: show.scheduled_at ? show.scheduled_at.slice(0, 16) : "",
       duration_minutes: show.duration_minutes ?? 0,
       stream_url: show.stream_url || undefined,
@@ -131,18 +137,32 @@ export default function EmissionsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!form.title.trim() || !form.scheduled_at) {
-      toast.error("Titre et date / heure sont requis");
+    if (!form.title.trim()) {
+      toast.error("Le titre est requis");
+      return;
+    }
+    // La date n'est obligatoire que pour une émission programmée.
+    if (form.status === "scheduled" && !form.scheduled_at) {
+      toast.error("La date / heure est requise pour une émission programmée");
       return;
     }
     setSubmitting(true);
     try {
+      const payload: EmissionWrite = {
+        title: form.title.trim(),
+        description: form.description?.trim() || undefined,
+        status: form.status,
+        // vide → null (le champ est nullable côté backend), sinon ISO complet
+        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        duration_minutes: form.duration_minutes || undefined,
+        stream_url: form.stream_url?.trim() || undefined,
+      };
       if (editingSlug) {
-        await emissionsApi.update(editingSlug, form);
+        await emissionsApi.update(editingSlug, payload);
         toast.success("Émission mise à jour");
       } else {
-        await emissionsApi.create(form);
-        toast.success("Émission programmée");
+        await emissionsApi.create(payload);
+        toast.success("Émission enregistrée");
       }
       setDialogOpen(false);
       setForm(EMPTY_FORM);
@@ -155,17 +175,57 @@ export default function EmissionsPage() {
     }
   };
 
-  // Démarrer / arrêter une diffusion = changer son statut (PATCH).
-  const handleSetStatus = async (
-    slug: string,
-    status: "live" | "recorded"
-  ) => {
+  // Démarrer / arrêter une diffusion via les actions dédiées (Cloudflare Stream).
+  const handleGoLive = async (show: EmissionList) => {
     try {
-      await emissionsApi.update(slug, { status });
-      toast.success(status === "live" ? "Émission démarrée — en direct" : "Diffusion arrêtée");
+      const res = await emissionsApi.goLive(show.slug);
+      toast.success("Émission démarrée — en direct");
+      // Les identifiants RTMPS ne sont renvoyés qu'ici : on les affiche une fois
+      // à l'opérateur pour la configuration OBS (jamais persistés).
+      if (res?.cf_rtmps_url && res?.cf_rtmps_key) {
+        setLiveCreds({ title: show.title, url: res.cf_rtmps_url, key: res.cf_rtmps_key });
+      }
       fetchShows();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors du changement de statut");
+      toast.error(err instanceof Error ? err.message : "Erreur au démarrage de la diffusion");
+    }
+  };
+
+  const copy = (v: string) => { navigator.clipboard.writeText(v); toast.success("Copié"); };
+
+  const handleEndLive = async (slug: string) => {
+    try {
+      await emissionsApi.endLive(slug);
+      toast.success("Diffusion arrêtée");
+      fetchShows();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur à l'arrêt de la diffusion");
+    }
+  };
+
+  // Regarder le direct / réécouter : charge le détail (URL de lecture HLS).
+  const handleWatch = async (show: EmissionList) => {
+    setWatch({ show, detail: null });
+    try {
+      const detail = await emissionsApi.get(show.slug);
+      setWatch({ show, detail });
+    } catch (err: unknown) {
+      setWatch(null);
+      toast.error(err instanceof Error ? err.message : "Impossible de charger la lecture");
+    }
+  };
+
+  // Partager le lien de lecture (direct ou replay) + enregistre le partage.
+  const handleShare = async (show: EmissionList) => {
+    try {
+      const detail = await emissionsApi.get(show.slug);
+      const link = detail.cf_playback_hls_url || detail.stream_url || "";
+      if (!link) { toast.error("Aucun lien de lecture disponible"); return; }
+      await navigator.clipboard.writeText(link);
+      toast.success("Lien copié dans le presse-papier");
+      emissionsApi.share(show.slug).catch(() => {}); // comptabilise le partage
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Impossible de récupérer le lien");
     }
   };
 
@@ -219,10 +279,22 @@ export default function EmissionsPage() {
                 <Textarea placeholder="Décrivez votre émission..." rows={3} value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
+              <div className="grid gap-2">
+                <Label>Statut</Label>
+                <Select value={form.status ?? "scheduled"}
+                  onValueChange={(v) => setForm({ ...form, status: v as EmissionStatus })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="scheduled">Programmée</SelectItem>
+                    <SelectItem value="live">En direct</SelectItem>
+                    <SelectItem value="recorded">Enregistrée</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label>Date et heure *</Label>
-                  <Input type="datetime-local" value={form.scheduled_at}
+                  <Label>Date et heure{form.status === "scheduled" ? " *" : ""}</Label>
+                  <Input type="datetime-local" value={form.scheduled_at ?? ""}
                     onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} />
                 </div>
                 <div className="grid gap-2">
@@ -284,7 +356,6 @@ export default function EmissionsPage() {
             <SelectItem value="live">En Direct</SelectItem>
             <SelectItem value="scheduled">Programmé</SelectItem>
             <SelectItem value="recorded">Enregistré</SelectItem>
-            <SelectItem value="cancelled">Annulé</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -338,15 +409,38 @@ export default function EmissionsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         {show.status === "scheduled" && (
-                          <DropdownMenuItem onClick={() => handleSetStatus(show.slug, "live")}>
+                          <DropdownMenuItem onClick={() => handleGoLive(show)}>
                             <Play className="mr-2 h-4 w-4" />Démarrer maintenant
                           </DropdownMenuItem>
                         )}
                         {show.status === "live" && (
-                          <DropdownMenuItem onClick={() => handleSetStatus(show.slug, "recorded")}>
+                          <DropdownMenuItem onClick={() => handleEndLive(show.slug)}>
                             <Pause className="mr-2 h-4 w-4" />Arrêter la diffusion
                           </DropdownMenuItem>
                         )}
+                        {show.status === "live" && (
+                          <DropdownMenuItem onClick={() => handleWatch(show)}>
+                            <Eye className="mr-2 h-4 w-4" />Regarder le direct
+                          </DropdownMenuItem>
+                        )}
+                        {show.status === "recorded" && (
+                          <DropdownMenuItem onClick={() => handleGoLive(show)}>
+                            <Radio className="mr-2 h-4 w-4" />Rediffuser en direct
+                          </DropdownMenuItem>
+                        )}
+                        {show.status === "recorded" && (
+                          <DropdownMenuItem onClick={() => handleWatch(show)}>
+                            <Headphones className="mr-2 h-4 w-4" />Voir la rediffusion
+                          </DropdownMenuItem>
+                        )}
+                        {(show.status === "live" || show.status === "recorded") && (
+                          <DropdownMenuItem onClick={() => handleShare(show)}>
+                            <Share2 className="mr-2 h-4 w-4" />Partager le lien
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => setComments(show)}>
+                          <MessageSquare className="mr-2 h-4 w-4" />Commentaires
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openEdit(show)}>
                           <Edit className="mr-2 h-4 w-4" />Modifier
                         </DropdownMenuItem>
@@ -361,14 +455,18 @@ export default function EmissionsPage() {
                   {/* Meta */}
                   <div className="mt-auto flex items-center justify-between pt-2 text-xs text-muted-foreground">
                     <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(show.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {new Date(show.scheduled_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
+                      {show.scheduled_at && (
+                        <>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {new Date(show.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(show.scheduled_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </>
+                      )}
                       <span>{formatDuration(show.duration_minutes)}</span>
                     </div>
                     <span className="flex items-center gap-1">
@@ -403,6 +501,120 @@ export default function EmissionsPage() {
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Lecteur : direct ou replay */}
+      <Dialog open={!!watch} onOpenChange={(o) => !o && setWatch(null)}>
+        <DialogContent className="max-w-3xl">
+          {watch && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {watch.show.status === "live" && (
+                    <Badge className="bg-red-500 text-white">
+                      <span className="mr-1 inline-block h-2 w-2 animate-pulse rounded-full bg-white" />EN DIRECT
+                    </Badge>
+                  )}
+                  {watch.show.title}
+                </DialogTitle>
+                <DialogDescription>
+                  {watch.show.status === "live"
+                    ? "Lecture du flux en direct."
+                    : "Lecture de la rediffusion."}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
+                {!watch.detail ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : watch.detail.cf_playback_hls_url ? (
+                  <HlsPlayer
+                    src={watch.detail.cf_playback_hls_url}
+                    poster={watch.detail.cover_url ?? undefined}
+                    emptyLabel={watch.show.status === "live"
+                      ? "Le direct n'a pas encore démarré (aucune diffusion active)."
+                      : "Enregistrement indisponible pour cette émission."}
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+                    <WifiOff className="h-8 w-8" />
+                    {watch.show.status === "live"
+                      ? "Le flux en direct n'est pas encore disponible."
+                      : "Aucun enregistrement disponible pour cette émission."}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => handleShare(watch.show)}>
+                  <Share2 className="mr-2 h-4 w-4" />Partager le lien
+                </Button>
+                <Button onClick={() => setWatch(null)}>Fermer</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Identifiants de diffusion (OBS) — affichés une seule fois au démarrage */}
+      <Dialog open={!!liveCreds} onOpenChange={(o) => !o && setLiveCreds(null)}>
+        <DialogContent className="sm:max-w-[560px]">
+          {liveCreds && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Prêt à diffuser « {liveCreds.title} »</DialogTitle>
+                <DialogDescription>
+                  Copie ces deux infos dans OBS pour lancer ton direct.{" "}
+                  <span className="font-semibold text-primary">Elles ne s&apos;affichent qu&apos;une seule fois.</span>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="space-y-1">
+                  <Label>Serveur (RTMPS)</Label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={liveCreds.url} className="font-mono text-xs" />
+                    <Button variant="outline" size="icon" onClick={() => copy(liveCreds.url)}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Clé de stream</Label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={liveCreds.key} className="font-mono text-xs" />
+                    <Button variant="outline" size="icon" onClick={() => copy(liveCreds.key)}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground leading-relaxed">
+                  Dans OBS, ouvre <span className="font-semibold text-primary">Paramètres</span> puis{" "}
+                  <span className="font-semibold text-primary">Flux</span>. Choisis le service{" "}
+                  <span className="font-semibold text-primary">Personnalisé</span>, colle le serveur et la clé
+                  puis clique sur <span className="font-semibold text-primary">Démarrer le streaming</span>.
+                  Ton direct apparaît dans <span className="font-semibold text-primary">Regarder le direct</span>,
+                  la rediffusion une fois que tu as coupé.
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setLiveCreds(null)}>C&apos;est copié</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modération des commentaires */}
+      {comments && (
+        <ModerationDialog
+          open onOpenChange={(o) => !o && setComments(null)}
+          title={`Commentaires — ${comments.title}`}
+          emptyLabel="Aucun commentaire sur cette émission."
+          load={() => commentsApi.list("emissions", comments.slug).then((r) => r.results.map(commentToMod))}
+          remove={(cid) => commentsApi.remove("emissions", comments.slug, cid)}
+        />
       )}
     </div>
   );

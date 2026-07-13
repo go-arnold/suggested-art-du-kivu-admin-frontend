@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Headphones, Play, Pause, Plus, Search, Filter, MoreHorizontal,
-  Clock, Calendar, BarChart3, Mic, Edit, Trash2, Heart, Loader2,
+  Clock, Calendar, BarChart3, Mic, Edit, Trash2, Heart, Loader2, MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,18 +19,33 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  podcastsApi, type PodcastSeriesList, type EpisodeList, type EpisodeWrite,
+  podcastsApi, commentsApi, type PodcastSeriesList, type EpisodeList, type EpisodeWrite,
+  type PodcastSeriesWrite,
 } from "@/lib/api";
+import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { toast } from "sonner";
 
-const EMPTY_EP: { title: string; description: string; series: string } = {
+const EMPTY_EP = {
   title: "", description: "", series: "",
+  audio_url: "", duration: "",
+  episode_number: "", season_number: "",
+  is_featured: false, published_at: "",
 };
+
+/** ISO → valeur pour <input type="datetime-local"> (heure locale). */
+function toLocalInput(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default function PodcastsPage() {
   const [podcasts, setPodcasts] = useState<PodcastSeriesList[]>([]);
@@ -45,15 +60,62 @@ export default function PodcastsPage() {
   const [form, setForm] = useState(EMPTY_EP);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [comments, setComments] = useState<EpisodeList | null>(null);
+
+  // Création d'une série depuis le formulaire d'épisode
+  const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
+  const [seriesDialogOpen, setSeriesDialogOpen] = useState(false);
+  const [savingSeries, setSavingSeries] = useState(false);
+  const EMPTY_SERIES = { title: "", category: "", description: "", is_featured: false };
+  const [seriesForm, setSeriesForm] = useState(EMPTY_SERIES);
+
+  const loadPodcasts = useCallback(async (): Promise<PodcastSeriesList[]> => {
+    setLoadingPodcasts(true);
+    try {
+      // page_size élevé : charge toutes les séries pour le sélecteur (édition incluse)
+      const d = await podcastsApi.list("page_size=100");
+      setPodcasts(d.results);
+      return d.results;
+    } catch {
+      toast.error("Erreur chargement podcasts");
+      return [];
+    } finally {
+      setLoadingPodcasts(false);
+    }
+  }, []);
+
+  useEffect(() => { loadPodcasts(); }, [loadPodcasts]);
 
   useEffect(() => {
-    setLoadingPodcasts(true);
-    // page_size élevé : charge toutes les séries pour le sélecteur (édition incluse)
-    podcastsApi.list("page_size=100")
-      .then((d) => setPodcasts(d.results))
-      .catch(() => toast.error("Erreur chargement podcasts"))
-      .finally(() => setLoadingPodcasts(false));
+    podcastsApi.categories()
+      .then(setCategories)
+      .catch(() => { /* catégories non bloquantes */ });
   }, []);
+
+  const handleCreateSeries = async () => {
+    if (!seriesForm.title.trim()) { toast.error("Le titre de la série est obligatoire"); return; }
+    if (!seriesForm.category)     { toast.error("La catégorie est obligatoire"); return; }
+    setSavingSeries(true);
+    try {
+      const payload: PodcastSeriesWrite = {
+        title: seriesForm.title.trim(),
+        category: seriesForm.category,
+        description: seriesForm.description.trim() || undefined,
+        is_featured: seriesForm.is_featured,
+      };
+      const created = await podcastsApi.create(payload);
+      toast.success("Série créée");
+      await loadPodcasts();
+      // sélectionne automatiquement la nouvelle série dans le formulaire d'épisode
+      setForm((f) => ({ ...f, series: String(created.id) }));
+      setSeriesForm(EMPTY_SERIES);
+      setSeriesDialogOpen(false);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la création de la série");
+    } finally {
+      setSavingSeries(false);
+    }
+  };
 
   const fetchEpisodes = useCallback(async () => {
     setLoadingEpisodes(true);
@@ -91,6 +153,12 @@ export default function PodcastsPage() {
       title: ep.title ?? "",
       description: ep.description ?? "",
       series: seriesId,
+      audio_url: ep.audio_url ?? "",
+      duration: ep.duration ?? "",
+      episode_number: ep.episode_number ? String(ep.episode_number) : "",
+      season_number: ep.season_number ? String(ep.season_number) : "",
+      is_featured: !!ep.is_featured,
+      published_at: toLocalInput(ep.published_at),
     });
     setIsCreateDialogOpen(true);
   };
@@ -99,21 +167,33 @@ export default function PodcastsPage() {
     if (!form.title || !form.series) { toast.error("Titre et série requis"); return; }
     setSubmitting(true);
     try {
+      // Champs communs (création + édition)
+      const common: Partial<EpisodeWrite> = {
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        series: Number(form.series),
+        audio_url: form.audio_url.trim() || undefined,
+        duration: form.duration.trim() || undefined,
+        episode_number: form.episode_number ? Number(form.episode_number) : undefined,
+        season_number: form.season_number ? Number(form.season_number) : undefined,
+        is_featured: form.is_featured,
+      };
       if (editingSlug) {
-        // PATCH partiel : on ne réécrit pas published_at
+        // PATCH partiel : published_at seulement si l'utilisateur l'a renseignée
         await podcastsApi.episodes.update(editingSlug, {
-          title: form.title,
-          description: form.description,
-          series: Number(form.series),
+          ...common,
+          ...(form.published_at ? { published_at: new Date(form.published_at).toISOString() } : {}),
         });
         toast.success("Épisode mis à jour");
       } else {
         const payload: EpisodeWrite = {
-          title: form.title,
-          description: form.description,
+          ...common,
+          title: form.title.trim(),
           series: Number(form.series),
-          // published_at est requis par l'API (et "status" n'existe pas côté backend)
-          published_at: new Date().toISOString(),
+          // published_at requis par l'API : la date choisie, sinon maintenant
+          published_at: form.published_at
+            ? new Date(form.published_at).toISOString()
+            : new Date().toISOString(),
         };
         await podcastsApi.episodes.create(payload);
         toast.success("Épisode créé");
@@ -157,7 +237,7 @@ export default function PodcastsPage() {
               <Plus className="mr-2 h-4 w-4" />Nouvel Épisode
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingSlug ? "Modifier l'Épisode" : "Ajouter un Épisode"}</DialogTitle>
               <DialogDescription>
@@ -168,7 +248,13 @@ export default function PodcastsPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label>Série / Podcast</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Série / Podcast</Label>
+                  <button type="button" onClick={() => { setSeriesForm(EMPTY_SERIES); setSeriesDialogOpen(true); }}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    <Plus className="h-3 w-3" />Nouvelle série
+                  </button>
+                </div>
                 <Select value={form.series} onValueChange={(v) => setForm({ ...form, series: v })}>
                   <SelectTrigger><SelectValue placeholder="Sélectionner un podcast" /></SelectTrigger>
                   <SelectContent>
@@ -177,6 +263,9 @@ export default function PodcastsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Série introuvable ? Cliquez sur « Nouvelle série » pour la créer.
+                </p>
               </div>
               <div className="grid gap-2">
                 <Label>Titre</Label>
@@ -187,6 +276,43 @@ export default function PodcastsPage() {
                 <Label>Description</Label>
                 <Textarea placeholder="Décrivez cet épisode..." rows={3} value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Fichier audio (URL)</Label>
+                <Input type="url" placeholder="https://… .mp3" value={form.audio_url}
+                  onChange={(e) => setForm({ ...form, audio_url: e.target.value })} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>Durée</Label>
+                  <Input placeholder="12:34" maxLength={10} value={form.duration}
+                    onChange={(e) => setForm({ ...form, duration: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Date de publication</Label>
+                  <Input type="datetime-local" value={form.published_at}
+                    onChange={(e) => setForm({ ...form, published_at: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>Saison</Label>
+                  <Input type="number" min={0} placeholder="1" value={form.season_number}
+                    onChange={(e) => setForm({ ...form, season_number: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>N° d'épisode</Label>
+                  <Input type="number" min={0} placeholder="1" value={form.episode_number}
+                    onChange={(e) => setForm({ ...form, episode_number: e.target.value })} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <Label className="cursor-pointer">En vedette</Label>
+                  <p className="text-xs text-muted-foreground">Mettre cet épisode en avant.</p>
+                </div>
+                <Switch checked={form.is_featured}
+                  onCheckedChange={(v) => setForm({ ...form, is_featured: v })} />
               </div>
             </div>
             <DialogFooter>
@@ -343,6 +469,9 @@ export default function PodcastsPage() {
                         <DropdownMenuItem onClick={() => openEdit(ep)}>
                           <Edit className="mr-2 h-4 w-4" />Modifier
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setComments(ep)}>
+                          <MessageSquare className="mr-2 h-4 w-4" />Commentaires
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteEpisode(ep.slug)}>
                           <Trash2 className="mr-2 h-4 w-4" />Supprimer
@@ -413,13 +542,77 @@ export default function PodcastsPage() {
                     <Plus className="h-8 w-8 text-primary" />
                   </div>
                   <h3 className="mt-4 font-semibold text-foreground">Nouveau Podcast</h3>
-                  <Button className="mt-4 bg-primary hover:bg-primary/90">Créer une série</Button>
+                  <Button className="mt-4 bg-primary hover:bg-primary/90"
+                    onClick={() => { setSeriesForm(EMPTY_SERIES); setSeriesDialogOpen(true); }}>
+                    Créer une série
+                  </Button>
                 </CardContent>
               </Card>
             </div>
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Création d'une série / podcast */}
+      <Dialog open={seriesDialogOpen} onOpenChange={(o) => { if (!savingSeries) setSeriesDialogOpen(o); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Nouvelle série</DialogTitle>
+            <DialogDescription>
+              Créez une série (podcast) pour y rattacher vos épisodes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>Titre *</Label>
+              <Input placeholder="Ex: Les voix du Kivu" value={seriesForm.title}
+                onChange={(e) => setSeriesForm({ ...seriesForm, title: e.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Catégorie *</Label>
+              <Select value={seriesForm.category}
+                onValueChange={(v) => setSeriesForm({ ...seriesForm, category: v })}>
+                <SelectTrigger><SelectValue placeholder="Sélectionner une catégorie" /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Description</Label>
+              <Textarea placeholder="Décrivez cette série..." rows={3} value={seriesForm.description}
+                onChange={(e) => setSeriesForm({ ...seriesForm, description: e.target.value })} />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label className="cursor-pointer">En vedette</Label>
+                <p className="text-xs text-muted-foreground">Mettre cette série en avant.</p>
+              </div>
+              <Switch checked={seriesForm.is_featured}
+                onCheckedChange={(v) => setSeriesForm({ ...seriesForm, is_featured: v })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={savingSeries} onClick={() => setSeriesDialogOpen(false)}>Annuler</Button>
+            <Button className="bg-primary hover:bg-primary/90" disabled={savingSeries} onClick={handleCreateSeries}>
+              {savingSeries && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Créer la série
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modération des commentaires */}
+      {comments && (
+        <ModerationDialog
+          open onOpenChange={(o) => !o && setComments(null)}
+          title={`Commentaires — ${comments.title}`}
+          emptyLabel="Aucun commentaire sur cet épisode."
+          load={() => commentsApi.list("podcasts/episodes", comments.slug).then((r) => r.results.map(commentToMod))}
+          remove={(cid) => commentsApi.remove("podcasts/episodes", comments.slug, cid)}
+        />
+      )}
     </div>
   );
 }

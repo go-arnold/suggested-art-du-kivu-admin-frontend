@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Search, Upload, Filter, LayoutGrid, List, Video, Music,
-  FileText, MoreHorizontal, Eye, Download, Copy, Trash2,
-  X, Check, Calendar, HardDrive, Loader2, ImageIcon, Play,
+  Search, Plus, Filter, LayoutGrid, List, Video,
+  MoreHorizontal, Eye, Copy, Trash2,
+  Check, Calendar, Loader2, Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -19,10 +20,10 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { videosApi } from "@/lib/api";
+import { videosApi, type VideoWrite } from "@/lib/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ interface VideoItem {
   is_premier: boolean;
   is_live: boolean;
   location: string;
-  artist_names: string[];
+  artist_names: string;   // le backend renvoie une chaîne, pas un tableau
   view_count: number;
   published_at: string | null;
 }
@@ -61,13 +62,13 @@ async function fetchVideos(params: string): Promise<PaginatedResponse<VideoItem>
 
 // ── Category config ───────────────────────────────────────────────────────────
 
+// Catégories valides (enum backend) — pas de "clips".
 const CATEGORY_LABELS: Record<string, string> = {
   freestyles: "Freestyles",
   interviews: "Interviews",
   premiers: "Premières",
   docs: "Documentaires",
   studio_sessions: "Studio",
-  clips: "Clips",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -76,7 +77,6 @@ const TYPE_COLORS: Record<string, string> = {
   premiers: "bg-pink-100 text-pink-700",
   docs: "bg-amber-100 text-amber-700",
   studio_sessions: "bg-emerald-100 text-emerald-700",
-  clips: "bg-purple-100 text-purple-700",
 };
 
 export default function MediathequePage() {
@@ -88,8 +88,15 @@ export default function MediathequePage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [previewVideo, setPreviewVideo] = useState<VideoItem | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [page, setPage] = useState(1);
+
+  // Ajout d'une vidéo (par URL — le backend ne gère pas l'upload de fichier)
+  const [addOpen, setAddOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const EMPTY = { title: "", video_url: "", category: "freestyles", duration: "", location: "" };
+  const [form, setForm] = useState(EMPTY);
+  const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
 
   const PAGE_SIZE = 20;
 
@@ -124,17 +131,30 @@ export default function MediathequePage() {
   const toggleSelectAll = () =>
     setSelectedIds(selectedIds.length === videos.length ? [] : videos.map((v) => v.id));
 
-  // Le backend n'accepte pas de fichier vidéo (champ video_url = URL), donc le
-  // téléversement par glisser-déposer n'est pas possible tel quel.
-  const notifyUploadUnavailable = () =>
-    toast.info("Le téléversement de fichier n'est pas disponible : les vidéos s'ajoutent par URL.");
-
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
-  const handleDragLeave = () => setIsDragging(false);
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer?.files?.length) notifyUploadUnavailable();
+  const handleAdd = async () => {
+    if (!form.title.trim())     { toast.error("Le titre est obligatoire"); return; }
+    if (!form.video_url.trim()) { toast.error("L'URL de la vidéo est obligatoire"); return; }
+    setSaving(true);
+    try {
+      const payload: VideoWrite = {
+        title: form.title.trim(),
+        video_url: form.video_url.trim(),
+        category: form.category,
+        published_at: new Date().toISOString(),
+        duration: form.duration.trim() || undefined,
+        location: form.location.trim() || undefined,
+      };
+      await videosApi.create(payload);
+      toast.success("Vidéo ajoutée");
+      setAddOpen(false);
+      setForm(EMPTY);
+      setPage(1);
+      fetchData();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'ajout");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const copyUrl = (slug: string) => {
@@ -173,8 +193,8 @@ export default function MediathequePage() {
     if (!selectedIds.length) return;
     if (!confirm(`Supprimer ${selectedIds.length} vidéo(s) ?`)) return;
     try {
-      const slugs = videos.filter((v) => selectedIds.includes(v.id)).map((v) => v.slug);
-      await Promise.all(slugs.map((s) => videosApi.delete(s)));
+      // Suppression groupée en un seul appel (bulk_delete)
+      await videosApi.bulkDelete(selectedIds);
       toast.success("Vidéos supprimées");
       setSelectedIds([]);
       fetchData();
@@ -195,25 +215,9 @@ export default function MediathequePage() {
             {totalCount.toLocaleString()} vidéos · WebTV Art-du-Kivu
           </p>
         </div>
-        <Button onClick={notifyUploadUnavailable}>
-          <Upload className="mr-2 h-4 w-4" />Uploader
+        <Button onClick={() => { setForm(EMPTY); setAddOpen(true); }}>
+          <Plus className="mr-2 h-4 w-4" />Ajouter une vidéo
         </Button>
-      </div>
-
-      {/* Upload Zone */}
-      <div
-        className={cn(
-          "cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors",
-          isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-        )}
-        onClick={notifyUploadUnavailable}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <Upload className={cn("mx-auto h-12 w-12 transition-colors", isDragging ? "text-primary" : "text-muted-foreground")} />
-        <p className="mt-4 text-sm font-medium">Glissez-déposez vos fichiers ici</p>
-        <p className="mt-1 text-xs text-muted-foreground">PNG, JPG, MP4, MP3, PDF jusqu'à 100MB</p>
       </div>
 
       {/* Filters */}
@@ -367,8 +371,8 @@ export default function MediathequePage() {
                       <Badge className={cn("text-xs", TYPE_COLORS[video.category] ?? "bg-muted text-muted-foreground")}>
                         {CATEGORY_LABELS[video.category] ?? video.category}
                       </Badge>
-                      {video.artist_names.length > 0 && (
-                        <span className="text-xs text-muted-foreground">{video.artist_names.slice(0, 2).join(", ")}</span>
+                      {video.artist_names && (
+                        <span className="text-xs text-muted-foreground">{video.artist_names}</span>
                       )}
                     </div>
                   </div>
@@ -395,11 +399,14 @@ export default function MediathequePage() {
                       <DropdownMenuItem onClick={() => setPreviewVideo(video)}>
                         <Eye className="mr-2 h-4 w-4" />Prévisualiser
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => watchVideo(video.slug)}>
+                        <Play className="mr-2 h-4 w-4" />Regarder
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => copyUrl(video.slug)}>
                         <Copy className="mr-2 h-4 w-4" />Copier l'URL
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteVideo(video.slug)}>
                         <Trash2 className="mr-2 h-4 w-4" />Supprimer
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -416,7 +423,7 @@ export default function MediathequePage() {
         <div className="flex flex-col items-center justify-center rounded-xl bg-card p-12 card-shadow text-center">
           <Video className="h-12 w-12 text-muted-foreground/50 mb-4" />
           <h3 className="font-display text-lg font-semibold">Aucune vidéo trouvée</h3>
-          <p className="mt-1 text-muted-foreground">Modifiez vos filtres ou uploadez une nouvelle vidéo.</p>
+          <p className="mt-1 text-muted-foreground">Ajuste tes filtres, ou ajoute une vidéo avec le bouton en haut à droite.</p>
         </div>
       )}
 
@@ -430,6 +437,54 @@ export default function MediathequePage() {
           </div>
         </div>
       )}
+
+      {/* Ajout d'une vidéo (par URL) */}
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!saving) { setAddOpen(o); if (!o) setForm(EMPTY); } }}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Ajouter une vidéo</DialogTitle>
+            <DialogDescription>
+              Les vidéos s&apos;ajoutent par lien (fichier .mp4 ou flux .m3u8) — l&apos;hébergement du fichier
+              se fait à part.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Titre *</Label>
+              <Input value={form.title} onChange={(e) => setField("title", e.target.value)} placeholder="Titre de la vidéo" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>URL de la vidéo *</Label>
+              <Input type="url" value={form.video_url} onChange={(e) => setField("video_url", e.target.value)} placeholder="https://… .mp4 ou .m3u8" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Catégorie</Label>
+                <Select value={form.category} onValueChange={(v) => setField("category", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => <SelectItem key={c} value={c}>{CATEGORY_LABELS[c]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Durée</Label>
+                <Input value={form.duration} onChange={(e) => setField("duration", e.target.value)} placeholder="12:34" maxLength={10} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Lieu</Label>
+              <Input value={form.location} onChange={(e) => setField("location", e.target.value)} placeholder="Goma, RDC" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={saving} onClick={() => setAddOpen(false)}>Annuler</Button>
+            <Button disabled={saving} onClick={handleAdd}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Ajouter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Preview Modal */}
       <Dialog open={!!previewVideo} onOpenChange={() => setPreviewVideo(null)}>
@@ -459,8 +514,8 @@ export default function MediathequePage() {
                 <div><p className="text-muted-foreground">Durée</p><p className="font-medium font-mono">{previewVideo.duration}</p></div>
                 <div><p className="text-muted-foreground">Vues</p><p className="font-medium">{previewVideo.view_count.toLocaleString()}</p></div>
                 {previewVideo.location && <div><p className="text-muted-foreground">Lieu</p><p className="font-medium">{previewVideo.location}</p></div>}
-                {previewVideo.artist_names.length > 0 && (
-                  <div className="col-span-2"><p className="text-muted-foreground">Artistes</p><p className="font-medium">{previewVideo.artist_names.join(", ")}</p></div>
+                {previewVideo.artist_names && (
+                  <div className="col-span-2"><p className="text-muted-foreground">Artistes</p><p className="font-medium">{previewVideo.artist_names}</p></div>
                 )}
                 {previewVideo.published_at && (
                   <div><p className="text-muted-foreground">Publié le</p><p className="font-medium">{new Date(previewVideo.published_at).toLocaleDateString("fr-FR")}</p></div>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Settings, Palette, Shield, Bell, Mail, Save, Upload, Globe, Separator as Sep,
+  Settings, Palette, Shield, Bell, Mail, Save, Upload, Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -302,17 +302,17 @@ export default function ParametresPage() {
               <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
                 <div>
                   <p className="font-medium">Endpoint API</p>
-                  <p className="text-muted-foreground font-mono text-xs">https://jeremy-backend.onrender.com/api/v1</p>
+                  <p className="text-muted-foreground font-mono text-xs">https://art-du-kivu-api.kelor.tech/api/v1</p>
                 </div>
                 <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 font-medium">Connecté</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
                 <div>
                   <p className="font-medium">Documentation Swagger</p>
-                  <p className="text-muted-foreground font-mono text-xs">https://jeremy-backend.onrender.com/api/schema/swagger-ui/</p>
+                  <p className="text-muted-foreground font-mono text-xs">https://art-du-kivu-api.kelor.tech/api/schema/swagger-ui/</p>
                 </div>
                 <Button variant="ghost" size="sm" asChild>
-                  <a href="https://jeremy-backend.onrender.com/api/schema/swagger-ui/" target="_blank" rel="noopener noreferrer">
+                  <a href="https://art-du-kivu-api.kelor.tech/api/schema/swagger-ui/" target="_blank" rel="noopener noreferrer">
                     Ouvrir
                   </a>
                 </Button>

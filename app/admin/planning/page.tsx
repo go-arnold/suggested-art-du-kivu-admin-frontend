@@ -206,7 +206,7 @@ export default function PlanningPage() {
     try {
       if (item.kind === "event")         await eventsApi.update(item.slug, { date: iso });
       else if (item.kind === "emission") await emissionsApi.update(item.slug, { scheduled_at: iso });
-      else if (item.kind === "article")  await articlesApi.update(item.slug, { published_at: iso });
+      else if (item.kind === "article")  await articlesApi.update(item.slug, { scheduled_at: iso });
       else                               await podcastsApi.episodes.update(item.slug, { published_at: iso });
       toast.success(`Replanifié au ${format(newDate, "d MMMM", { locale: fr })}`);
     } catch (err: unknown) {

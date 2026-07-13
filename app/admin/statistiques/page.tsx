@@ -1,15 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
-  BarChart3, TrendingUp, TrendingDown, Eye, Users, FileText,
-  Music, Calendar, Headphones, Video, Loader2, Radio,
+  BarChart3, TrendingUp, Eye, Users, FileText, Music, Calendar,
+  Headphones, Video, Loader2, Heart, Ticket, Disc3, Play,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  articlesApi, artistsApi, eventsApi, podcastsApi,
-  emissionsApi, usersApi,
-} from "@/lib/api";
+import { analyticsApi, type DashboardStats } from "@/lib/api";
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
 
@@ -43,79 +41,50 @@ function StatCard({
   );
 }
 
-// ── Top Articles Row ───────────────────────────────────────────────────────────
+// ── Top list générique ──────────────────────────────────────────────────────────
 
-function TopArticles({ articles }: { articles: { id: number; title: string; view_count: number; author_name: string; published_at: string | null }[] }) {
-  if (articles.length === 0) return null;
-  const max = Math.max(...articles.map((a) => a.view_count));
+function TopList<T extends { id: number; title: string; slug: string }>({
+  title, icon: Icon, color, bar, items, value, href,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  bar: string;
+  items: T[];
+  value: (it: T) => number;
+  href: (it: T) => string;
+}) {
+  const max = items.length ? Math.max(...items.map(value)) : 0;
   return (
     <Card className="card-shadow">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-primary" />
-          Articles les plus lus
+          <Icon className={`h-5 w-5 ${color}`} />{title}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {articles.map((art, i) => (
-          <div key={art.id} className="flex items-center gap-4">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-              {i + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{art.title}</p>
-              <p className="text-xs text-muted-foreground">{art.author_name}</p>
-              <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${max > 0 ? (art.view_count / max) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-            <span className="shrink-0 text-sm font-mono text-muted-foreground">
-              {art.view_count.toLocaleString()}
-            </span>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Top Episodes ───────────────────────────────────────────────────────────────
-
-function TopEpisodes({ episodes }: { episodes: { id: number; title: string; play_count: number; series_title: string; duration: string }[] }) {
-  if (episodes.length === 0) return null;
-  const max = Math.max(...episodes.map((e) => e.play_count));
-  return (
-    <Card className="card-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Headphones className="h-5 w-5 text-blue-500" />
-          Épisodes les plus écoutés
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {episodes.map((ep, i) => (
-          <div key={ep.id} className="flex items-center gap-4">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
-              {i + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{ep.title}</p>
-              <p className="text-xs text-muted-foreground">{ep.series_title} · {ep.duration}</p>
-              <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-blue-400 transition-all"
-                  style={{ width: `${max > 0 ? (ep.play_count / max) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-            <span className="shrink-0 text-sm font-mono text-muted-foreground">
-              {ep.play_count.toLocaleString()}
-            </span>
-          </div>
-        ))}
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucune donnée.</p>
+        ) : (
+          items.map((it, i) => {
+            const v = value(it);
+            return (
+              <Link key={it.id} href={href(it)} className="flex items-center gap-4 group">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold ${color}`}>
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-sm font-medium group-hover:text-primary transition-colors">{it.title}</p>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div className={`h-full rounded-full ${bar} transition-all`}
+                      style={{ width: `${max > 0 ? (v / max) * 100 : 0}%` }} />
+                  </div>
+                </div>
+                <span className="shrink-0 font-mono text-sm text-muted-foreground">{v.toLocaleString()}</span>
+              </Link>
+            );
+          })
+        )}
       </CardContent>
     </Card>
   );
@@ -123,145 +92,79 @@ function TopEpisodes({ episodes }: { episodes: { id: number; title: string; play
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-interface Stats {
-  articles:  number;
-  artists:   number;
-  events:    number;
-  podcasts:  number;
-  episodes:  number;
-  emissions: number;
-  users:     number;
-  videos:    number;
-}
-
 export default function StatistiquesPage() {
-  const [stats,    setStats]    = useState<Partial<Stats>>({});
-  const [loading,  setLoading]  = useState(true);
-  const [topArticles, setTopArticles] = useState<{
-    id: number; title: string; view_count: number; author_name: string; published_at: string | null;
-  }[]>([]);
-  const [topEpisodes, setTopEpisodes] = useState<{
-    id: number; title: string; play_count: number; series_title: string; duration: string;
-  }[]>([]);
+  const [data,    setData]    = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(false);
 
   useEffect(() => {
     setLoading(true);
-
-    Promise.allSettled([
-      articlesApi.list("page_size=5"),          // top 5 most viewed
-      artistsApi.list("page_size=1"),
-      eventsApi.list("page_size=1"),
-      podcastsApi.list("page_size=1"),
-      podcastsApi.episodes.list("page_size=5"),  // top 5 most played
-      emissionsApi.list("page_size=1"),
-      usersApi.list("page_size=1"),
-    ]).then(([arts, artists, events, pods, eps, emiss, usrs]) => {
-      const s: Partial<Stats> = {};
-
-      if (arts.status    === "fulfilled") { s.articles  = arts.value.count;    setTopArticles(arts.value.results.map(a => ({ id: a.id, title: a.title, view_count: a.view_count ?? 0, author_name: a.author_name, published_at: a.published_at }))); }
-      if (artists.status === "fulfilled") s.artists   = artists.value.count;
-      if (events.status  === "fulfilled") s.events    = events.value.count;
-      if (pods.status    === "fulfilled") s.podcasts   = pods.value.count;
-      if (eps.status     === "fulfilled") { s.episodes  = eps.value.count;     setTopEpisodes(eps.value.results.map(e => ({ id: e.id, title: e.title, play_count: e.play_count ?? 0, series_title: e.series_title, duration: e.duration }))); }
-      if (emiss.status   === "fulfilled") s.emissions  = emiss.value.count;
-      if (usrs.status    === "fulfilled") s.users      = usrs.value.count;
-
-      setStats(s);
-    }).finally(() => setLoading(false));
+    analyticsApi.dashboard()
+      .then(setData)
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
   }, []);
+
+  const c = data?.counts ?? {};
+  const t = data?.totals ?? {};
+  const n = (v?: number) => (loading ? "—" : (v ?? 0).toLocaleString());
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="font-display text-3xl font-bold text-foreground">Statistiques</h1>
-        <p className="mt-1 text-muted-foreground">Vue d'ensemble de la plateforme Art-du-Kivu</p>
+        <p className="mt-1 text-muted-foreground">Vue d&apos;ensemble de la plateforme Art-du-Kivu</p>
       </div>
 
-      {/* Overview grid */}
+      {error && (
+        <Card className="card-shadow border-destructive/40">
+          <CardContent className="py-4 text-sm text-destructive">
+            Impossible de charger les statistiques (accès administrateur requis ou service indisponible).
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Compteurs de contenu */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Articles"   value={stats.articles  ?? "—"} icon={FileText}   color="text-primary"      loading={loading} subtitle="publiés" />
-        <StatCard title="Artistes"   value={stats.artists   ?? "—"} icon={Music}      color="text-warning"      loading={loading} subtitle="sur la plateforme" />
-        <StatCard title="Événements" value={stats.events    ?? "—"} icon={Calendar}   color="text-blue-500"     loading={loading} subtitle="au total" />
-        <StatCard title="Podcasts"   value={stats.podcasts  ?? "—"} icon={Headphones} color="text-emerald-500"  loading={loading} subtitle="séries" />
+        <StatCard title="Articles"        value={n(c.articles)}         icon={FileText}   color="text-primary"     loading={loading} subtitle="publiés" />
+        <StatCard title="Artistes"        value={n(c.artists)}          icon={Music}      color="text-warning"     loading={loading} subtitle="sur la plateforme" />
+        <StatCard title="Événements"      value={n(c.events)}           icon={Calendar}   color="text-info"        loading={loading} subtitle={`${n(c.event_registrations)} inscriptions`} />
+        <StatCard title="Séries podcast"  value={n(c.podcast_series)}   icon={Headphones} color="text-success"     loading={loading} subtitle={`${n(c.podcast_episodes)} épisodes`} />
       </div>
-
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Épisodes"   value={stats.episodes  ?? "—"} icon={Headphones} color="text-blue-400"     loading={loading} subtitle="podcast" />
-        <StatCard title="Émissions"  value={stats.emissions ?? "—"} icon={Radio}      color="text-red-500"      loading={loading} subtitle="live / enregistrées" />
-        <StatCard title="Utilisateurs" value={stats.users   ?? "—"} icon={Users}      color="text-primary"      loading={loading} subtitle="inscrits" />
-        <StatCard title="Contenu total" value={
-          loading ? "—"
-            : ((stats.articles ?? 0) + (stats.episodes ?? 0) + (stats.events ?? 0)).toLocaleString()
-        } icon={BarChart3} color="text-primary" loading={loading} subtitle="articles + épisodes + événements" />
+        <StatCard title="Vidéos WebTV"    value={n(c.webtv_videos)}     icon={Video}      color="text-info"        loading={loading} subtitle="médiathèque" />
+        <StatCard title="Sorties"         value={n(c.releases)}         icon={Disc3}      color="text-primary"     loading={loading} subtitle="musicales" />
+        <StatCard title="Programmes radio" value={n(c.radio_programs)}  icon={BarChart3}  color="text-warning"     loading={loading} subtitle="grille" />
+        <StatCard title="Épisodes"        value={n(c.podcast_episodes)} icon={Headphones} color="text-success"     loading={loading} subtitle="podcast" />
       </div>
 
-      {/* Charts placeholder + top lists */}
+      {/* Totaux d'engagement */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Vues articles"   value={n(t.article_views)}    icon={Eye}        color="text-primary"     loading={loading} subtitle="cumulées" />
+        <StatCard title="Likes articles"  value={n(t.article_likes)}    icon={Heart}      color="text-destructive" loading={loading} subtitle="cumulés" />
+        <StatCard title="Vues WebTV"      value={n(t.webtv_views)}      icon={Eye}        color="text-info"        loading={loading} subtitle="cumulées" />
+        <StatCard title="Écoutes podcast" value={n(t.podcast_plays)}    icon={Play}       color="text-success"     loading={loading} subtitle="cumulées" />
+      </div>
+
+      {/* Tops */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <TopArticles articles={topArticles} />
-        <TopEpisodes episodes={topEpisodes} />
+        <TopList
+          title="Articles les plus lus" icon={TrendingUp} color="text-primary" bar="bg-primary"
+          items={data?.top_articles ?? []} value={(a) => a.view_count}
+          href={(a) => `/admin/articles/${a.slug}`}
+        />
+        <TopList
+          title="Épisodes les plus écoutés" icon={Headphones} color="text-success" bar="bg-success"
+          items={data?.top_podcast_episodes ?? []} value={(e) => e.play_count}
+          href={() => "/admin/podcasts"}
+        />
       </div>
-
-      {/* Events breakdown */}
-      <Card className="card-shadow">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-blue-500" />
-            Répartition des événements par statut
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EventsBreakdown />
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ── Events Breakdown ──────────────────────────────────────────────────────────
-
-function EventsBreakdown() {
-  const [data,    setData]    = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
-
-  const statuses = [
-    { key: "upcoming", label: "À venir",    color: "bg-blue-400" },
-    { key: "live",     label: "En cours",   color: "bg-emerald-400" },
-    { key: "past",     label: "Passés",     color: "bg-muted-foreground/40" },
-    { key: "cancelled",label: "Annulés",    color: "bg-destructive/50" },
-  ];
-
-  useEffect(() => {
-    Promise.allSettled(
-      statuses.map((s) => eventsApi.list(`status=${s.key}&page_size=1`).then((r) => ({ key: s.key, count: r.count })))
-    ).then((results) => {
-      const d: Record<string, number> = {};
-      results.forEach((r) => { if (r.status === "fulfilled") d[r.value.key] = r.value.count; });
-      setData(d);
-    }).finally(() => setLoading(false));
-  }, []);
-
-  const total = Object.values(data).reduce((a, b) => a + b, 0);
-
-  if (loading) return <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
-
-  return (
-    <div className="space-y-4">
-      {statuses.map(({ key, label, color }) => {
-        const count = data[key] ?? 0;
-        const pct   = total > 0 ? (count / total) * 100 : 0;
-        return (
-          <div key={key} className="flex items-center gap-4">
-            <span className="w-24 text-sm text-muted-foreground shrink-0">{label}</span>
-            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-              <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
-            </div>
-            <span className="w-16 text-right text-sm font-mono text-muted-foreground shrink-0">
-              {count} ({Math.round(pct)}%)
-            </span>
-          </div>
-        );
-      })}
+      <TopList
+        title="Vidéos WebTV les plus vues" icon={Video} color="text-info" bar="bg-info"
+        items={data?.top_webtv_videos ?? []} value={(v) => v.view_count}
+        href={() => "/admin/mediatheque"}
+      />
     </div>
   );
 }

@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import dynamic from "next/dynamic";
-import { articlesApi, usersApi, type ArticleCategory, type User } from "@/lib/api";
+import { articlesApi, usersApi, resolveTagIds, type ArticleCategory, type User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 // Éditeur riche chargé à la demande (lazy) — allège le bundle initial de la page.
@@ -111,17 +111,20 @@ export default function NewArticlePage() {
     if (!validate(submitStatus !== "draft")) return;
     setPublishing(true);
     try {
+      // L'API attend des IDs de tags → on résout (réutilise/crée) les libellés.
+      const tagIds = await resolveTagIds(tags);
+      // Le backend ne connaît que draft|published. « Programmer » = publier à une
+      // date future (status=published + scheduled_at).
+      const isScheduled = submitStatus === "scheduled";
       await articlesApi.create({
         title,
         content,
-        // API expects category ID (integer)
-        category: categoryId ? Number(categoryId) : "",
-        status:   submitStatus,
-        tags,
-        is_featured:    isFeatured,
-        allow_comments: allowComments,
-        published_at:   submitStatus === "scheduled" && scheduleDate
-          ? scheduleDate.toISOString() : undefined,
+        category: categoryId ? Number(categoryId) : null,
+        author: authorId ? Number(authorId) : undefined,
+        status: isScheduled ? "published" : submitStatus,
+        tags: tagIds,
+        is_featured: isFeatured,
+        scheduled_at: isScheduled && scheduleDate ? scheduleDate.toISOString() : undefined,
       });
       toast.success(
         submitStatus === "draft"     ? "Brouillon enregistré" :

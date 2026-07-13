@@ -262,7 +262,6 @@ export default function EvenementsPage() {
                       <SelectItem value="festival">Festival</SelectItem>
                       <SelectItem value="concert">Concert</SelectItem>
                       <SelectItem value="exposition">Exposition</SelectItem>
-                      <SelectItem value="atelier">Atelier</SelectItem>
                       <SelectItem value="conference">Conférence</SelectItem>
                       <SelectItem value="spectacle">Spectacle</SelectItem>
                     </SelectContent>
@@ -388,7 +387,6 @@ export default function EvenementsPage() {
             <SelectItem value="live">En cours</SelectItem>
             <SelectItem value="upcoming">À venir</SelectItem>
             <SelectItem value="past">Passé</SelectItem>
-            <SelectItem value="cancelled">Annulé</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterCategory} onValueChange={setFilterCategory}>

@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import dynamic from "next/dynamic";
-import { articlesApi, usersApi, type ArticleCategory, type User } from "@/lib/api";
+import { articlesApi, usersApi, resolveTagIds, type ArticleCategory, type User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 // Éditeur riche chargé à la demande (lazy) — allège le bundle initial de la page.
@@ -141,16 +141,18 @@ export default function ModifierArticlePage() {
     if (!title.trim()) { toast.error("Le titre est requis"); return; }
     setSaving(true);
     try {
+      const tagIds = await resolveTagIds(tags);
+      // Backend : draft|published uniquement. « Programmer » = published + scheduled_at.
+      const isScheduled = asStatus === "scheduled";
       await articlesApi.update(slug, {
         title,
         content,
-        category: categoryId ? Number(categoryId) : undefined,
-        status:   asStatus,
-        tags,
-        is_featured:    isFeatured,
-        allow_comments: allowComments,
-        published_at:   asStatus === "scheduled" && scheduleDate
-          ? scheduleDate.toISOString() : undefined,
+        category: categoryId ? Number(categoryId) : null,
+        author: authorId ? Number(authorId) : undefined,
+        status: isScheduled ? "published" : asStatus,
+        tags: tagIds,
+        is_featured: isFeatured,
+        scheduled_at: isScheduled && scheduleDate ? scheduleDate.toISOString() : undefined,
       });
       toast.success(asStatus === "published" ? "Article publié" : "Article sauvegardé");
       router.push("/admin/articles");

@@ -164,6 +164,18 @@ export default function UtilisateursPage() {
     }
   };
 
+  // ── Suppression (via l'action groupée : pas de DELETE /users/{id}/) ────────
+  const handleDelete = async (user: User) => {
+    if (!confirm(`Supprimer l'utilisateur ${user.username || user.email} ?`)) return;
+    try {
+      await usersApi.bulkDelete([user.id]);
+      toast.success("Utilisateur supprimé");
+      fetchUsers();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la suppression");
+    }
+  };
+
   // ── Selection helpers ────────────────────────────────────────────────────
   const toggleSelect    = (id: number) =>
     setSelectedIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
@@ -391,7 +403,7 @@ export default function UtilisateursPage() {
                       </div>
                     </TableCell>
                     <TableCell>{getRoleBadge(user.role)}</TableCell>
-                    <TableCell>{getStatusBadge(user.is_active)}</TableCell>
+                    <TableCell>{getStatusBadge(!!user.is_active)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Activity className="h-3 w-3" />{timeAgo(user.last_login)}
@@ -422,6 +434,9 @@ export default function UtilisateursPage() {
                             {user.is_active
                               ? <><Ban className="mr-2 h-4 w-4" />Désactiver</>
                               : <><CheckCircle className="mr-2 h-4 w-4" />Réactiver</>}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(user)}>
+                            <Trash2 className="mr-2 h-4 w-4" />Supprimer
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
