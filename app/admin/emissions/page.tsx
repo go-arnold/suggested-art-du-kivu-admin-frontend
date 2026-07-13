@@ -1,176 +1,248 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react";
 import {
-  Radio,
-  Play,
-  Pause,
-  Calendar,
-  Clock,
-  Users,
-  Eye,
-  MoreHorizontal,
-  Plus,
-  Search,
-  Filter,
-  Wifi,
-  WifiOff,
-  Video,
-  Mic,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+  Radio, Calendar, Clock, Eye, MoreHorizontal, Plus, Search, Filter,
+  Wifi, WifiOff, Video, Loader2, Play, Pause, Edit, Share2, Headphones, Copy,
+  MessageSquare,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { emissionsApi, commentsApi, type EmissionList, type EmissionWrite, type EmissionDetail, type EmissionStatus } from "@/lib/api";
+import { HlsPlayer } from "@/components/admin/hls-player";
+import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
+import { toast } from "sonner";
 
-interface LiveShow {
-  id: string
-  title: string
-  description: string
-  host: string
-  hostAvatar: string
-  scheduledDate: string
-  scheduledTime: string
-  duration: string
-  status: "live" | "scheduled" | "ended" | "cancelled"
-  viewers: number
-  type: "video" | "audio"
-  thumbnail: string
-}
+// ── Status badge ──────────────────────────────────────────────────────────────
 
-const mockShows: LiveShow[] = [
-  {
-    id: "1",
-    title: "Soirée Jazz du Kivu",
-    description: "Une soirée musicale avec les meilleurs artistes jazz de la région",
-    host: "Jean-Pierre Mulongo",
-    hostAvatar: "/placeholder.svg",
-    scheduledDate: "2026-01-30",
-    scheduledTime: "20:00",
-    duration: "2h",
-    status: "live",
-    viewers: 1247,
-    type: "video",
-    thumbnail: "/placeholder.svg",
-  },
-  {
-    id: "2",
-    title: "Découverte des Talents",
-    description: "Émission hebdomadaire présentant les nouveaux artistes",
-    host: "Marie Kabila",
-    hostAvatar: "/placeholder.svg",
-    scheduledDate: "2026-01-31",
-    scheduledTime: "19:00",
-    duration: "1h30",
-    status: "scheduled",
-    viewers: 0,
-    type: "video",
-    thumbnail: "/placeholder.svg",
-  },
-  {
-    id: "3",
-    title: "Radio Kivu - Matinale",
-    description: "L'actualité culturelle du matin",
-    host: "Patrick Bisimwa",
-    hostAvatar: "/placeholder.svg",
-    scheduledDate: "2026-02-01",
-    scheduledTime: "07:00",
-    duration: "3h",
-    status: "scheduled",
-    viewers: 0,
-    type: "audio",
-    thumbnail: "/placeholder.svg",
-  },
-  {
-    id: "4",
-    title: "Concert Live - Fally Ipupa",
-    description: "Retransmission en direct du concert à Goma",
-    host: "Équipe Art-du-Kivu",
-    hostAvatar: "/placeholder.svg",
-    scheduledDate: "2026-01-29",
-    scheduledTime: "21:00",
-    duration: "3h",
-    status: "ended",
-    viewers: 15420,
-    type: "video",
-    thumbnail: "/placeholder.svg",
-  },
-]
-
-function getStatusBadge(status: LiveShow["status"]) {
+function getStatusBadge(status: EmissionList["status"]) {
   switch (status) {
     case "live":
       return (
         <Badge className="bg-red-500 text-white animate-pulse">
-          <Wifi className="mr-1 h-3 w-3" />
-          En Direct
+          <Wifi className="mr-1 h-3 w-3" />En Direct
         </Badge>
-      )
+      );
     case "scheduled":
       return (
         <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-          <Clock className="mr-1 h-3 w-3" />
-          Programmé
+          <Clock className="mr-1 h-3 w-3" />Programmé
         </Badge>
-      )
-    case "ended":
+      );
+    case "recorded":
       return (
         <Badge variant="secondary" className="bg-muted text-muted-foreground">
-          <WifiOff className="mr-1 h-3 w-3" />
-          Terminé
+          <WifiOff className="mr-1 h-3 w-3" />Enregistré
         </Badge>
-      )
-    case "cancelled":
-      return (
-        <Badge variant="destructive">
-          Annulé
-        </Badge>
-      )
+      );
+    default:
+      return null;
   }
 }
 
+function formatDuration(minutes: number) {
+  if (!minutes) return "—";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h${m > 0 ? m + "min" : ""}` : `${m}min`;
+}
+
+// ── Empty form matches EmissionWrite exactly ──────────────────────────────────
+
+const EMPTY_FORM: EmissionWrite = {
+  title: "",
+  description: "",
+  status: "scheduled",
+  scheduled_at: "",
+  duration_minutes: 60,
+};
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function EmissionsPage() {
-  const [shows, setShows] = useState<LiveShow[]>(mockShows)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterStatus, setFilterStatus] = useState<string>("all")
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [shows,       setShows]       = useState<EmissionList[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [dialogOpen,  setDialogOpen]  = useState(false);
+  const [form,        setForm]        = useState<EmissionWrite>(EMPTY_FORM);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [watch,       setWatch]       = useState<{ show: EmissionList; detail: EmissionDetail | null } | null>(null);
+  const [liveCreds,   setLiveCreds]   = useState<{ title: string; url: string; key: string } | null>(null);
+  const [comments,    setComments]    = useState<EmissionList | null>(null);
 
-  const filteredShows = shows.filter((show) => {
-    const matchesSearch =
-      show.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      show.host.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = filterStatus === "all" || show.status === filterStatus
-    return matchesSearch && matchesStatus
-  })
+  const fetchShows = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("ordering", "-created_at"); // plus récentes en premier
+      if (searchQuery)            params.set("search", searchQuery);
+      if (filterStatus !== "all") params.set("status", filterStatus);
+      const data = await emissionsApi.list(params.toString());
+      setShows(data.results);
+    } catch {
+      toast.error("Erreur lors du chargement des émissions");
+    } finally {
+      setLoading(false);
+    }
+  }, [searchQuery, filterStatus]);
 
-  const liveNow = shows.filter((s) => s.status === "live")
-  const scheduled = shows.filter((s) => s.status === "scheduled")
-  const totalViewers = shows.reduce((acc, s) => acc + s.viewers, 0)
+  useEffect(() => { fetchShows(); }, [fetchShows]);
+
+  const openCreate = () => {
+    setEditingSlug(null);
+    setForm(EMPTY_FORM);
+    setDialogOpen(true);
+  };
+
+  // Pré-remplit depuis la liste puis charge le détail (description complète, etc.)
+  const openEdit = async (show: EmissionList) => {
+    setEditingSlug(show.slug);
+    setForm({
+      title: show.title,
+      description: show.description ?? "",
+      status: show.status,
+      scheduled_at: show.scheduled_at ? show.scheduled_at.slice(0, 16) : "",
+      duration_minutes: show.duration_minutes ?? 0,
+      stream_url: show.stream_url || undefined,
+    });
+    setDialogOpen(true);
+    try {
+      const d = await emissionsApi.get(show.slug);
+      setForm((f) => ({
+        ...f,
+        description: d.description ?? "",
+        stream_url: d.stream_url || undefined,
+        duration_minutes: d.duration_minutes ?? f.duration_minutes,
+      }));
+    } catch {
+      /* on garde les valeurs de la liste */
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!form.title.trim()) {
+      toast.error("Le titre est requis");
+      return;
+    }
+    // La date n'est obligatoire que pour une émission programmée.
+    if (form.status === "scheduled" && !form.scheduled_at) {
+      toast.error("La date / heure est requise pour une émission programmée");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload: EmissionWrite = {
+        title: form.title.trim(),
+        description: form.description?.trim() || undefined,
+        status: form.status,
+        // vide → null (le champ est nullable côté backend), sinon ISO complet
+        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        duration_minutes: form.duration_minutes || undefined,
+        stream_url: form.stream_url?.trim() || undefined,
+      };
+      if (editingSlug) {
+        await emissionsApi.update(editingSlug, payload);
+        toast.success("Émission mise à jour");
+      } else {
+        await emissionsApi.create(payload);
+        toast.success("Émission enregistrée");
+      }
+      setDialogOpen(false);
+      setForm(EMPTY_FORM);
+      setEditingSlug(null);
+      fetchShows();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Démarrer / arrêter une diffusion via les actions dédiées (Cloudflare Stream).
+  const handleGoLive = async (show: EmissionList) => {
+    try {
+      const res = await emissionsApi.goLive(show.slug);
+      toast.success("Émission démarrée — en direct");
+      // Les identifiants RTMPS ne sont renvoyés qu'ici : on les affiche une fois
+      // à l'opérateur pour la configuration OBS (jamais persistés).
+      if (res?.cf_rtmps_url && res?.cf_rtmps_key) {
+        setLiveCreds({ title: show.title, url: res.cf_rtmps_url, key: res.cf_rtmps_key });
+      }
+      fetchShows();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur au démarrage de la diffusion");
+    }
+  };
+
+  const copy = (v: string) => { navigator.clipboard.writeText(v); toast.success("Copié"); };
+
+  const handleEndLive = async (slug: string) => {
+    try {
+      await emissionsApi.endLive(slug);
+      toast.success("Diffusion arrêtée");
+      fetchShows();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur à l'arrêt de la diffusion");
+    }
+  };
+
+  // Regarder le direct / réécouter : charge le détail (URL de lecture HLS).
+  const handleWatch = async (show: EmissionList) => {
+    setWatch({ show, detail: null });
+    try {
+      const detail = await emissionsApi.get(show.slug);
+      setWatch({ show, detail });
+    } catch (err: unknown) {
+      setWatch(null);
+      toast.error(err instanceof Error ? err.message : "Impossible de charger la lecture");
+    }
+  };
+
+  // Partager le lien de lecture (direct ou replay) + enregistre le partage.
+  const handleShare = async (show: EmissionList) => {
+    try {
+      const detail = await emissionsApi.get(show.slug);
+      const link = detail.cf_playback_hls_url || detail.stream_url || "";
+      if (!link) { toast.error("Aucun lien de lecture disponible"); return; }
+      await navigator.clipboard.writeText(link);
+      toast.success("Lien copié dans le presse-papier");
+      emissionsApi.share(show.slug).catch(() => {}); // comptabilise le partage
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Impossible de récupérer le lien");
+    }
+  };
+
+  const handleDelete = async (slug: string) => {
+    if (!confirm("Supprimer cette émission ?")) return;
+    try {
+      await emissionsApi.delete(slug);
+      toast.success("Émission supprimée");
+      fetchShows();
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const liveNow    = shows.filter((s) => s.status === "live");
+  const scheduled  = shows.filter((s) => s.status === "scheduled");
+  const totalViews = shows.reduce((acc, s) => acc + (s.total_views ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -178,93 +250,70 @@ export default function EmissionsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Émissions Live</h1>
-          <p className="text-muted-foreground">
-            Gérez vos diffusions en direct et programmées
-          </p>
+          <p className="text-muted-foreground">Gérez vos diffusions en direct et programmées</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Nouvelle Émission
+            <Button className="bg-primary hover:bg-primary/90" onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" />Nouvelle Émission
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
-              <DialogTitle>Programmer une Émission</DialogTitle>
+              <DialogTitle>{editingSlug ? "Modifier l'Émission" : "Programmer une Émission"}</DialogTitle>
               <DialogDescription>
-                Créez une nouvelle émission en direct ou programmée.
+                {editingSlug
+                  ? "Mettez à jour les informations de l'émission."
+                  : "Créez une nouvelle émission en direct ou programmée."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="title">Titre de l&apos;émission</Label>
-                <Input id="title" placeholder="Ex: Soirée Jazz du Kivu" />
+                <Label>Titre *</Label>
+                <Input placeholder="Ex: Soirée Jazz du Kivu" value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Décrivez votre émission..."
-                  rows={3}
-                />
+                <Label>Description</Label>
+                <Textarea placeholder="Décrivez votre émission..." rows={3} value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Statut</Label>
+                <Select value={form.status ?? "scheduled"}
+                  onValueChange={(v) => setForm({ ...form, status: v as EmissionStatus })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="scheduled">Programmée</SelectItem>
+                    <SelectItem value="live">En direct</SelectItem>
+                    <SelectItem value="recorded">Enregistrée</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="date">Date</Label>
-                  <Input id="date" type="date" />
+                  <Label>Date et heure{form.status === "scheduled" ? " *" : ""}</Label>
+                  <Input type="datetime-local" value={form.scheduled_at ?? ""}
+                    onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="time">Heure</Label>
-                  <Input id="time" type="time" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="duration">Durée estimée</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="30m">30 minutes</SelectItem>
-                      <SelectItem value="1h">1 heure</SelectItem>
-                      <SelectItem value="1h30">1h30</SelectItem>
-                      <SelectItem value="2h">2 heures</SelectItem>
-                      <SelectItem value="3h">3 heures</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="type">Type</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="video">Vidéo</SelectItem>
-                      <SelectItem value="audio">Audio</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Durée (minutes)</Label>
+                  <Input type="number" placeholder="60" value={form.duration_minutes || ""}
+                    onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} />
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="host">Présentateur</Label>
-                <Input id="host" placeholder="Nom du présentateur" />
+                <Label>URL de stream (optionnel)</Label>
+                <Input placeholder="https://..." value={form.stream_url ?? ""}
+                  onChange={(e) => setForm({ ...form, stream_url: e.target.value || undefined })} />
               </div>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsCreateDialogOpen(false)}
-              >
-                Annuler
-              </Button>
-              <Button
-                className="bg-primary hover:bg-primary/90"
-                onClick={() => setIsCreateDialogOpen(false)}
-              >
-                Programmer
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+              <Button className="bg-primary hover:bg-primary/90" onClick={handleSubmit} disabled={submitting}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingSlug ? "Enregistrer" : "Programmer"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -273,210 +322,300 @@ export default function EmissionsPage() {
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              En Direct
-            </CardTitle>
-            <Radio className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{liveNow.length}</div>
-            <p className="text-xs text-muted-foreground">émission(s) active(s)</p>
-          </CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Programmées
-            </CardTitle>
-            <Calendar className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{scheduled.length}</div>
-            <p className="text-xs text-muted-foreground">à venir</p>
-          </CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Spectateurs Live
-            </CardTitle>
-            <Eye className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {liveNow.reduce((acc, s) => acc + s.viewers, 0).toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">en ce moment</p>
-          </CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Vues
-            </CardTitle>
-            <Users className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalViewers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">ce mois</p>
-          </CardContent>
-        </Card>
+        {[
+          { label: "En Direct",        value: liveNow.length,          icon: Radio,    color: "text-red-500"      },
+          { label: "Programmées",      value: scheduled.length,        icon: Calendar, color: "text-blue-500"     },
+          { label: "Spectateurs live", value: liveNow.reduce((a, s) => a + (s.viewer_count ?? 0), 0).toLocaleString(), icon: Eye, color: "text-primary" },
+          { label: "Total vues",       value: totalViews.toLocaleString(), icon: Eye, color: "text-emerald-500"   },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <Card key={label} className="card-shadow">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
+              <Icon className={`h-4 w-4 ${color}`} />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{value}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher une émission..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+          <Input placeholder="Rechercher une émission..." value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
         </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
           <SelectTrigger className="w-full sm:w-[180px]">
-            <Filter className="mr-2 h-4 w-4" />
-            <SelectValue placeholder="Statut" />
+            <Filter className="mr-2 h-4 w-4" /><SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les statuts</SelectItem>
             <SelectItem value="live">En Direct</SelectItem>
             <SelectItem value="scheduled">Programmé</SelectItem>
-            <SelectItem value="ended">Terminé</SelectItem>
-            <SelectItem value="cancelled">Annulé</SelectItem>
+            <SelectItem value="recorded">Enregistré</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {/* Shows List */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {filteredShows.map((show) => (
-          <Card key={show.id} className="card-shadow overflow-hidden">
-            <div className="flex">
-              <div className="relative h-32 w-32 flex-shrink-0 bg-muted">
-                <img
-                  src={show.thumbnail || "/placeholder.svg"}
-                  alt={show.title}
-                  className="h-full w-full object-cover"
-                />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                  {show.type === "video" ? (
+      {/* Loading */}
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {/* Shows grid */}
+      {!loading && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {shows.map((show) => (
+            <Card key={show.id} className="card-shadow overflow-hidden">
+              <div className="flex">
+                {/* Thumbnail */}
+                <div className="relative h-32 w-32 shrink-0 bg-muted">
+                  <img src={show.cover_url || "/placeholder.svg"} alt={show.title}
+                    loading="lazy" decoding="async"
+                    className="h-full w-full object-cover" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                     <Video className="h-8 w-8 text-white" />
-                  ) : (
-                    <Mic className="h-8 w-8 text-white" />
+                  </div>
+                  {show.status === "live" && (
+                    <div className="absolute left-2 top-2">
+                      <span className="flex h-3 w-3">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                      </span>
+                    </div>
                   )}
                 </div>
-                {show.status === "live" && (
-                  <div className="absolute left-2 top-2">
-                    <span className="flex h-3 w-3">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                      <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-                    </span>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-1 flex-col p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="mb-1 flex items-center gap-2">
-                      {getStatusBadge(show.status)}
-                      <Badge variant="outline" className="text-xs">
-                        {show.type === "video" ? "Vidéo" : "Audio"}
-                      </Badge>
+
+                {/* Content */}
+                <div className="flex flex-1 flex-col p-4 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="mb-1">{getStatusBadge(show.status)}</div>
+                      <h3 className="font-semibold text-foreground line-clamp-1">{show.title}</h3>
+                      {show.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-1">{show.description}</p>
+                      )}
                     </div>
-                    <h3 className="font-semibold text-foreground line-clamp-1">
-                      {show.title}
-                    </h3>
-                    <p className="text-sm text-muted-foreground line-clamp-1">
-                      {show.description}
-                    </p>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {show.status === "live" ? (
-                        <DropdownMenuItem>
-                          <Pause className="mr-2 h-4 w-4" />
-                          Arrêter la diffusion
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {show.status === "scheduled" && (
+                          <DropdownMenuItem onClick={() => handleGoLive(show)}>
+                            <Play className="mr-2 h-4 w-4" />Démarrer maintenant
+                          </DropdownMenuItem>
+                        )}
+                        {show.status === "live" && (
+                          <DropdownMenuItem onClick={() => handleEndLive(show.slug)}>
+                            <Pause className="mr-2 h-4 w-4" />Arrêter la diffusion
+                          </DropdownMenuItem>
+                        )}
+                        {show.status === "live" && (
+                          <DropdownMenuItem onClick={() => handleWatch(show)}>
+                            <Eye className="mr-2 h-4 w-4" />Regarder le direct
+                          </DropdownMenuItem>
+                        )}
+                        {show.status === "recorded" && (
+                          <DropdownMenuItem onClick={() => handleGoLive(show)}>
+                            <Radio className="mr-2 h-4 w-4" />Rediffuser en direct
+                          </DropdownMenuItem>
+                        )}
+                        {show.status === "recorded" && (
+                          <DropdownMenuItem onClick={() => handleWatch(show)}>
+                            <Headphones className="mr-2 h-4 w-4" />Voir la rediffusion
+                          </DropdownMenuItem>
+                        )}
+                        {(show.status === "live" || show.status === "recorded") && (
+                          <DropdownMenuItem onClick={() => handleShare(show)}>
+                            <Share2 className="mr-2 h-4 w-4" />Partager le lien
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => setComments(show)}>
+                          <MessageSquare className="mr-2 h-4 w-4" />Commentaires
                         </DropdownMenuItem>
-                      ) : show.status === "scheduled" ? (
-                        <DropdownMenuItem>
-                          <Play className="mr-2 h-4 w-4" />
-                          Démarrer maintenant
+                        <DropdownMenuItem onClick={() => openEdit(show)}>
+                          <Edit className="mr-2 h-4 w-4" />Modifier
                         </DropdownMenuItem>
-                      ) : null}
-                      <DropdownMenuItem>Modifier</DropdownMenuItem>
-                      <DropdownMenuItem>Voir les statistiques</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive">
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <div className="mt-auto flex items-center justify-between pt-2 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-4">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(show.scheduledDate).toLocaleDateString("fr-FR", {
-                        day: "numeric",
-                        month: "short",
-                      })}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {show.scheduledTime}
-                    </span>
-                    <span>{show.duration}</span>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(show.slug)}>
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  {show.viewers > 0 && (
+
+                  {/* Meta */}
+                  <div className="mt-auto flex items-center justify-between pt-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3">
+                      {show.scheduled_at && (
+                        <>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {new Date(show.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(show.scheduled_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </>
+                      )}
+                      <span>{formatDuration(show.duration_minutes)}</span>
+                    </div>
                     <span className="flex items-center gap-1">
                       <Eye className="h-3 w-3" />
-                      {show.viewers.toLocaleString()}
+                      {(show.total_views ?? 0).toLocaleString()}
                     </span>
+                  </div>
+
+                  {/* Hosts */}
+                  {show.host_names && show.host_names.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {show.host_names.join(", ")}
+                    </p>
                   )}
                 </div>
-                <div className="mt-2 flex items-center gap-2 text-sm">
-                  <img
-                    src={show.hostAvatar || "/placeholder.svg"}
-                    alt={show.host}
-                    className="h-5 w-5 rounded-full"
-                  />
-                  <span className="text-muted-foreground">{show.host}</span>
-                </div>
               </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
-      {filteredShows.length === 0 && (
+      {!loading && shows.length === 0 && (
         <Card className="card-shadow">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Radio className="h-12 w-12 text-muted-foreground/50" />
-            <h3 className="mt-4 font-semibold text-foreground">
-              Aucune émission trouvée
-            </h3>
+            <h3 className="mt-4 font-semibold text-foreground">Aucune émission trouvée</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Modifiez vos filtres ou créez une nouvelle émission.
             </p>
-            <Button
-              className="mt-4 bg-primary hover:bg-primary/90"
-              onClick={() => setIsCreateDialogOpen(true)}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Créer une émission
+            <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={() => setDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />Créer une émission
             </Button>
           </CardContent>
         </Card>
       )}
+
+      {/* Lecteur : direct ou replay */}
+      <Dialog open={!!watch} onOpenChange={(o) => !o && setWatch(null)}>
+        <DialogContent className="max-w-3xl">
+          {watch && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {watch.show.status === "live" && (
+                    <Badge className="bg-red-500 text-white">
+                      <span className="mr-1 inline-block h-2 w-2 animate-pulse rounded-full bg-white" />EN DIRECT
+                    </Badge>
+                  )}
+                  {watch.show.title}
+                </DialogTitle>
+                <DialogDescription>
+                  {watch.show.status === "live"
+                    ? "Lecture du flux en direct."
+                    : "Lecture de la rediffusion."}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
+                {!watch.detail ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : watch.detail.cf_playback_hls_url ? (
+                  <HlsPlayer
+                    src={watch.detail.cf_playback_hls_url}
+                    poster={watch.detail.cover_url ?? undefined}
+                    emptyLabel={watch.show.status === "live"
+                      ? "Le direct n'a pas encore démarré (aucune diffusion active)."
+                      : "Enregistrement indisponible pour cette émission."}
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+                    <WifiOff className="h-8 w-8" />
+                    {watch.show.status === "live"
+                      ? "Le flux en direct n'est pas encore disponible."
+                      : "Aucun enregistrement disponible pour cette émission."}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => handleShare(watch.show)}>
+                  <Share2 className="mr-2 h-4 w-4" />Partager le lien
+                </Button>
+                <Button onClick={() => setWatch(null)}>Fermer</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Identifiants de diffusion (OBS) — affichés une seule fois au démarrage */}
+      <Dialog open={!!liveCreds} onOpenChange={(o) => !o && setLiveCreds(null)}>
+        <DialogContent className="sm:max-w-[560px]">
+          {liveCreds && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Prêt à diffuser « {liveCreds.title} »</DialogTitle>
+                <DialogDescription>
+                  Copie ces deux infos dans OBS pour lancer ton direct.{" "}
+                  <span className="font-semibold text-primary">Elles ne s&apos;affichent qu&apos;une seule fois.</span>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="space-y-1">
+                  <Label>Serveur (RTMPS)</Label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={liveCreds.url} className="font-mono text-xs" />
+                    <Button variant="outline" size="icon" onClick={() => copy(liveCreds.url)}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Clé de stream</Label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={liveCreds.key} className="font-mono text-xs" />
+                    <Button variant="outline" size="icon" onClick={() => copy(liveCreds.key)}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground leading-relaxed">
+                  Dans OBS, ouvre <span className="font-semibold text-primary">Paramètres</span> puis{" "}
+                  <span className="font-semibold text-primary">Flux</span>. Choisis le service{" "}
+                  <span className="font-semibold text-primary">Personnalisé</span>, colle le serveur et la clé
+                  puis clique sur <span className="font-semibold text-primary">Démarrer le streaming</span>.
+                  Ton direct apparaît dans <span className="font-semibold text-primary">Regarder le direct</span>,
+                  la rediffusion une fois que tu as coupé.
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setLiveCreds(null)}>C&apos;est copié</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modération des commentaires */}
+      {comments && (
+        <ModerationDialog
+          open onOpenChange={(o) => !o && setComments(null)}
+          title={`Commentaires — ${comments.title}`}
+          emptyLabel="Aucun commentaire sur cette émission."
+          load={() => commentsApi.list("emissions", comments.slug).then((r) => r.results.map(commentToMod))}
+          remove={(cid) => commentsApi.remove("emissions", comments.slug, cid)}
+        />
+      )}
     </div>
-  )
+  );
 }

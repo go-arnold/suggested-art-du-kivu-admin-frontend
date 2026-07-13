@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Save, Eye, Send, Upload, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,14 +34,15 @@ const RichTextEditor = dynamic(
   }
 );
 
-export default function NewArticlePage() {
+export default function ModifierArticlePage() {
+  const params = useParams<{ slug: string }>();
   const router = useRouter();
+  const slug   = params.slug;
   const { user } = useAuth();
 
-  // Form state
   const [title,         setTitle]         = useState("");
   const [content,       setContent]       = useState("");
-  const [categoryId,    setCategoryId]    = useState<string>("");   // stores category ID as string
+  const [categoryId,    setCategoryId]    = useState<string>("");  // stored as string ID
   const [authorId,      setAuthorId]      = useState<string>("");
   const [tags,          setTags]          = useState<string[]>([]);
   const [tagInput,      setTagInput]      = useState("");
@@ -53,27 +54,66 @@ export default function NewArticlePage() {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isPreviewOpen,  setIsPreviewOpen]  = useState(false);
 
-  // API data
-  const [categories,  setCategories]  = useState<ArticleCategory[]>([]);
-  const [authors,     setAuthors]     = useState<User[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
-  const [publishing,  setPublishing]  = useState(false);
+  const [categories,    setCategories]    = useState<ArticleCategory[]>([]);
+  const [authors,       setAuthors]       = useState<User[]>([]);
+  const [articleAuthor, setArticleAuthor] = useState<User | null>(null);
+  const [loadingData,   setLoadingData]   = useState(true);
+  const [saving,      setSaving]      = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load categories + authors
+  // Load article + categories on mount
   useEffect(() => {
-    Promise.allSettled([
-      articlesApi.categories(),
-      usersApi.list("page_size=50"),
-    ]).then(([catsRes, usersRes]) => {
-      if (catsRes.status === "fulfilled")  setCategories(catsRes.value);
-      if (usersRes.status === "fulfilled") setAuthors(usersRes.value.results);
-    }).finally(() => setLoadingData(false));
+    // Auteurs (liste des utilisateurs) — non bloquant
+    usersApi.list("page_size=50")
+      .then((r) => setAuthors(r.results))
+      .catch(() => {});
 
-    // Default author = current user
-    if (user) setAuthorId(String(user.id));
-  }, [user]);
+    Promise.all([
+      articlesApi.get(slug),
+      articlesApi.categories(),
+    ]).then(([article, cats]) => {
+      setTitle(article.title);
+      setContent(article.content ?? "");
+      setCategories(cats);
+
+      // Auteur de l'article (prérempli)
+      const author = article.author;
+      if (author?.id) {
+        setAuthorId(String(author.id));
+        setArticleAuthor(author as unknown as User);
+      }
+
+      // Resolve category → find matching ID
+      const cat = article.category;
+      if (typeof cat === "object" && cat !== null) {
+        setCategoryId(String((cat as ArticleCategory).id));
+      } else if (typeof cat === "string") {
+        // Try to match by slug or name
+        const found = cats.find((c) => c.slug === cat || c.name === cat);
+        if (found) setCategoryId(String(found.id));
+      }
+
+      if (article.featured_image_url) setFeaturedImage(article.featured_image_url);
+
+      // Tags (l'API peut renvoyer des chaînes ou des objets {name})
+      const rawTags = (article as { tags?: (string | { name: string })[] }).tags ?? [];
+      setTags(rawTags.map((t) => (typeof t === "string" ? t : t.name)));
+
+      // Statut + mise en avant
+      const st = (article as { status?: "draft" | "published" | "scheduled" }).status;
+      if (st) setStatus(st);
+      setIsFeatured(!!(article as { is_featured?: boolean }).is_featured);
+
+      // Date de programmation
+      if (st === "scheduled" && article.published_at) {
+        setScheduleDate(new Date(article.published_at));
+      }
+    }).catch(() => {
+      toast.error("Impossible de charger l'article");
+      router.push("/admin/articles");
+    }).finally(() => setLoadingData(false));
+  }, [slug, router]);
 
   const wordCount = useMemo(() => {
     const text = content.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ");
@@ -97,45 +137,29 @@ export default function NewArticlePage() {
     reader.readAsDataURL(file);
   };
 
-  const validate = (forPublish: boolean) => {
-    if (!title.trim())     { toast.error("Le titre est requis"); return false; }
-    if (forPublish) {
-      if (!content.replace(/<[^>]*>/g, "").trim()) { toast.error("Le contenu est vide"); return false; }
-      if (!categoryId) { toast.error("Choisissez une catégorie"); return false; }
-      if (status === "scheduled" && !scheduleDate) { toast.error("Choisissez une date"); return false; }
-    }
-    return true;
-  };
-
-  const submit = async (submitStatus: "draft" | "published" | "scheduled") => {
-    if (!validate(submitStatus !== "draft")) return;
-    setPublishing(true);
+  const handleSave = async (asStatus: "draft" | "published" | "scheduled") => {
+    if (!title.trim()) { toast.error("Le titre est requis"); return; }
+    setSaving(true);
     try {
-      // L'API attend des IDs de tags → on résout (réutilise/crée) les libellés.
       const tagIds = await resolveTagIds(tags);
-      // Le backend ne connaît que draft|published. « Programmer » = publier à une
-      // date future (status=published + scheduled_at).
-      const isScheduled = submitStatus === "scheduled";
-      await articlesApi.create({
+      // Backend : draft|published uniquement. « Programmer » = published + scheduled_at.
+      const isScheduled = asStatus === "scheduled";
+      await articlesApi.update(slug, {
         title,
         content,
         category: categoryId ? Number(categoryId) : null,
         author: authorId ? Number(authorId) : undefined,
-        status: isScheduled ? "published" : submitStatus,
+        status: isScheduled ? "published" : asStatus,
         tags: tagIds,
         is_featured: isFeatured,
         scheduled_at: isScheduled && scheduleDate ? scheduleDate.toISOString() : undefined,
       });
-      toast.success(
-        submitStatus === "draft"     ? "Brouillon enregistré" :
-        submitStatus === "scheduled" ? `Article programmé` :
-        "Article publié avec succès"
-      );
+      toast.success(asStatus === "published" ? "Article publié" : "Article sauvegardé");
       router.push("/admin/articles");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la publication");
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la sauvegarde");
     } finally {
-      setPublishing(false);
+      setSaving(false);
     }
   };
 
@@ -144,14 +168,22 @@ export default function NewArticlePage() {
   const authorDisplayName = (a: User) =>
     a.username || a.email?.split("@")[0] || `#${a.id}`;
 
-  // L'utilisateur connecté est l'auteur par défaut et doit toujours être
-  // proposé, même si /users/ ne le renvoie pas (pagination/permissions) ou échoue.
+  // L'auteur de l'article doit toujours figurer dans les options, même s'il
+  // n'est pas dans la page d'utilisateurs chargée (pagination/permissions).
   const authorOptions = useMemo<User[]>(() => {
-    if (!user) return authors;
-    return authors.some((a) => String(a.id) === String(user.id))
-      ? authors
-      : [user as User, ...authors];
-  }, [authors, user]);
+    if (articleAuthor && !authors.some((a) => String(a.id) === String(articleAuthor.id))) {
+      return [articleAuthor, ...authors];
+    }
+    return authors;
+  }, [authors, articleAuthor]);
+
+  if (loadingData) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -162,41 +194,40 @@ export default function NewArticlePage() {
             <Link href="/admin/articles"><ArrowLeft className="h-5 w-5" /></Link>
           </Button>
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">Nouvel Article</h1>
-            <p className="text-sm text-muted-foreground">Créez un nouveau contenu pour Art-du-Kivu</p>
+            <h1 className="font-display text-2xl font-bold text-foreground">Modifier l&apos;Article</h1>
+            <p className="text-xs text-muted-foreground font-mono truncate max-w-xs">{slug}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setIsPreviewOpen(true)}>
-            <Eye className="mr-2 h-4 w-4" />Prévisualiser
+            <Eye className="mr-2 h-4 w-4" />Aperçu
           </Button>
 
-          {/* Le bouton d'action dépend du statut sélectionné :
-              - "Publier immédiatement" -> bouton Publier
-              - "Brouillon" / "Programmer" -> bouton d'enregistrement (sans publication) */}
+          {/* Un seul bouton d'action selon le statut sélectionné :
+              - "Publié" -> Publier ; "Brouillon"/"Programmer" -> enregistrer sans publier */}
           {status === "published" ? (
-            <Button size="sm" onClick={() => submit("published")} disabled={publishing}>
-              {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button size="sm" onClick={() => handleSave("published")} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Send className="mr-2 h-4 w-4" />Publier
             </Button>
           ) : (
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => submit(status)}
-              disabled={publishing}
+              onClick={() => handleSave(status)}
+              disabled={saving}
             >
-              {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Save className="mr-2 h-4 w-4" />
-              {status === "scheduled" ? "Programmer" : "Brouillon"}
+              {status === "scheduled" ? "Programmer" : "Sauvegarder"}
             </Button>
           )}
         </div>
       </div>
 
-      {/* Editor Layout */}
+      {/* Editor */}
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Main */}
+        {/* Main content */}
         <div className="space-y-6">
           <div className="rounded-xl bg-card p-6 card-shadow">
             <Input
@@ -216,7 +247,7 @@ export default function NewArticlePage() {
         <div className="space-y-6">
           {/* Publication */}
           <div className="rounded-xl bg-card p-6 card-shadow">
-            <h3 className="font-semibold text-foreground mb-4">Publication</h3>
+            <h3 className="font-semibold mb-4">Publication</h3>
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Statut</Label>
@@ -224,19 +255,18 @@ export default function NewArticlePage() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="draft">Brouillon</SelectItem>
-                    <SelectItem value="published">Publier immédiatement</SelectItem>
-                    <SelectItem value="scheduled">Programmer</SelectItem>
+                    <SelectItem value="published">Publié</SelectItem>
+                    <SelectItem value="scheduled">Programmé</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
               {status === "scheduled" && (
                 <div className="space-y-2">
                   <Label>Date de publication</Label>
                   <Popover open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="w-full justify-start bg-transparent">
-                        {scheduleDate ? scheduleDate.toLocaleDateString("fr-FR") : "Sélectionner une date"}
+                        {scheduleDate ? scheduleDate.toLocaleDateString("fr-FR") : "Choisir une date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -248,7 +278,7 @@ export default function NewArticlePage() {
                 </div>
               )}
 
-              {/* Author — real users from API */}
+              {/* Auteur */}
               <div className="space-y-2">
                 <Label>Auteur</Label>
                 {loadingData ? (
@@ -285,7 +315,7 @@ export default function NewArticlePage() {
 
           {/* Featured Image */}
           <div className="rounded-xl bg-card p-6 card-shadow">
-            <h3 className="font-semibold text-foreground mb-4">Image à la Une</h3>
+            <h3 className="font-semibold mb-4">Image à la Une</h3>
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => handleImageUpload(e.target.files?.[0])} />
             {featuredImage ? (
@@ -299,8 +329,8 @@ export default function NewArticlePage() {
               </div>
             ) : (
               <div
-                className="flex aspect-video cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
+                className="flex aspect-video cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors"
               >
                 <Upload className="h-8 w-8 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">Cliquez pour ajouter une image</p>
@@ -310,7 +340,7 @@ export default function NewArticlePage() {
 
           {/* Category — by ID */}
           <div className="rounded-xl bg-card p-6 card-shadow">
-            <h3 className="font-semibold text-foreground mb-4">Catégorie</h3>
+            <h3 className="font-semibold mb-4">Catégorie</h3>
             {loadingData ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                 <Loader2 className="h-4 w-4 animate-spin" />Chargement…
@@ -333,7 +363,7 @@ export default function NewArticlePage() {
 
           {/* Tags */}
           <div className="rounded-xl bg-card p-6 card-shadow">
-            <h3 className="font-semibold text-foreground mb-4">Tags</h3>
+            <h3 className="font-semibold mb-4">Tags</h3>
             <div className="flex gap-2">
               <Input placeholder="Ajouter un tag…" value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)} onKeyDown={handleTagKeyDown} />
@@ -343,7 +373,7 @@ export default function NewArticlePage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 {tags.map((tag) => (
                   <Badge key={tag} variant="secondary"
-                    className="gap-1 pr-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive"
+                    className="gap-1 pr-1 cursor-pointer hover:bg-destructive/10"
                     onClick={() => removeTag(tag)}>
                     {tag}<X className="h-3 w-3" />
                   </Badge>
@@ -354,21 +384,18 @@ export default function NewArticlePage() {
 
           {/* Options */}
           <div className="rounded-xl bg-card p-6 card-shadow">
-            <h3 className="font-semibold text-foreground mb-4">Options</h3>
+            <h3 className="font-semibold mb-4">Options</h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Article mis en avant</Label>
-                  <p className="text-xs text-muted-foreground">Afficher sur la page d{"'"}accueil</p>
+                  <p className="text-xs text-muted-foreground">Page d{"'"}accueil</p>
                 </div>
                 <Switch checked={isFeatured} onCheckedChange={setIsFeatured} />
               </div>
               <Separator />
               <div className="flex items-center justify-between">
-                <div>
-                  <Label>Autoriser les commentaires</Label>
-                  <p className="text-xs text-muted-foreground">Les lecteurs peuvent commenter</p>
-                </div>
+                <Label>Autoriser les commentaires</Label>
                 <Switch checked={allowComments} onCheckedChange={setAllowComments} />
               </div>
             </div>
@@ -384,20 +411,16 @@ export default function NewArticlePage() {
             {featuredImage && (
               <img src={featuredImage} alt={title} loading="lazy" decoding="async" className="aspect-video w-full rounded-lg object-cover" />
             )}
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex gap-2">
               {selectedCategory && <Badge variant="secondary">{selectedCategory.name}</Badge>}
             </div>
-            <h1 className="font-display text-3xl font-bold text-foreground">
-              {title || "Titre de l'article"}
-            </h1>
-            {content.replace(/<[^>]*>/g, "").trim() ? (
-              <div className="rte-content" dangerouslySetInnerHTML={{ __html: content }} />
-            ) : (
-              <p className="text-muted-foreground">Aucun contenu à prévisualiser.</p>
-            )}
+            <h1 className="font-display text-3xl font-bold">{title || "Titre"}</h1>
+            {content.replace(/<[^>]*>/g, "").trim()
+              ? <div className="rte-content" dangerouslySetInnerHTML={{ __html: content }} />
+              : <p className="text-muted-foreground">Aucun contenu.</p>}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
-                {tags.map((tag) => <Badge key={tag} variant="outline">#{tag}</Badge>)}
+                {tags.map((t) => <Badge key={t} variant="outline">#{t}</Badge>)}
               </div>
             )}
           </article>
