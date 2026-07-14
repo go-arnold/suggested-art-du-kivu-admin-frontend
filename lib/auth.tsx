@@ -8,7 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { authApi, type User } from "./api";
+import { authApi, type User, type JWT, type RegisterPayload } from "./api";
 
 interface AuthContextType {
   user: User | null;
@@ -16,6 +16,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (accessToken: string) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
 }
 
@@ -63,33 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const jwt = await authApi.login({ email, password });
-
-    // The login response includes the user object directly
+  // Enregistre la session (tokens + user) — partagé par login / google / register.
+  const persistSession = useCallback((jwt: JWT, fallback: Partial<User>) => {
     const loggedInUser: User = jwt.user ?? ({
-      id: 0,
-      email,
-      username: email.split("@")[0],
-      role: "viewer",
-    } as User);
-
-    localStorage.setItem("access_token",  jwt.access);
-    if (jwt.refresh) localStorage.setItem("refresh_token", jwt.refresh);
-    localStorage.setItem("current_user",  JSON.stringify(loggedInUser));
-
-    setToken(jwt.access);
-    setUser(loggedInUser);
-  }, []);
-
-  const loginWithGoogle = useCallback(async (accessToken: string) => {
-    const jwt = await authApi.google({ access_token: accessToken });
-
-    const loggedInUser: User = jwt.user ?? ({
-      id: 0,
-      email: "",
-      username: "google_user",
-      role: "viewer",
+      id: 0, email: "", username: "user", role: "viewer", ...fallback,
     } as User);
 
     localStorage.setItem("access_token", jwt.access);
@@ -99,6 +77,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(jwt.access);
     setUser(loggedInUser);
   }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const jwt = await authApi.login({ email, password });
+    persistSession(jwt, { email, username: email.split("@")[0] });
+  }, [persistSession]);
+
+  const loginWithGoogle = useCallback(async (accessToken: string) => {
+    const jwt = await authApi.google({ access_token: accessToken });
+    persistSession(jwt, { username: "google_user" });
+  }, [persistSession]);
+
+  // Le backend connecte directement à l'inscription (renvoie un JWT).
+  const register = useCallback(async (payload: RegisterPayload) => {
+    const jwt = await authApi.register(payload);
+    persistSession(jwt, { email: payload.email, username: payload.username });
+  }, [persistSession]);
 
   const logout = useCallback(() => {
     localStorage.removeItem("access_token");
@@ -110,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, loginWithGoogle, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

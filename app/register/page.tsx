@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { authApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +61,7 @@ function StrengthBar({ value }: { value: number }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RegisterPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, register } = useAuth();
   const router = useRouter();
 
   const [firstName,  setFirstName]  = useState("");
@@ -74,8 +73,6 @@ export default function RegisterPage() {
   const [showPwd1,   setShowPwd1]   = useState(false);
   const [showPwd2,   setShowPwd2]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [success,    setSuccess]    = useState(false);
-  const [successMsg, setSuccessMsg] = useState("");
 
   const strength = score(password1);
   const match    = password1.length > 0 && password1 === password2;
@@ -117,7 +114,8 @@ export default function RegisterPage() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      const res = await authApi.register({
+      // Le backend crée le compte ET connecte directement (renvoie un JWT).
+      await register({
         username: username.trim(),
         email: email.trim(),
         password1,
@@ -125,20 +123,10 @@ export default function RegisterPage() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
       });
-      // Le backend renvoie { detail: "Un email de vérification a été envoyé." }
-      setSuccessMsg(res?.detail ?? "");
-      setSuccess(true);
+      toast.success("Compte créé — bienvenue sur Art-du-Kivu !");
+      // La redirection vers /admin est gérée par l'effet « déjà connecté ».
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "";
-
-      // Le backend retourne 500 quand l'email de confirmation ne peut pas être envoyé,
-      // mais le compte est généralement créé.
-      if (msg.includes("server_error") || msg.includes("500") || msg.includes("unexpected")) {
-        setSuccess(true);
-        toast.info("Compte créé, mais l'email de vérification n'a pas pu être envoyé.");
-      } else {
-        toast.error(msg || "Erreur lors de la création du compte");
-      }
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la création du compte");
     } finally {
       setSubmitting(false);
     }
@@ -149,68 +137,6 @@ export default function RegisterPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  // ── Success screen ──
-  if (success) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <div className="w-full max-w-sm text-center space-y-6">
-          {/* Logo */}
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-display text-2xl font-bold">
-            AK
-          </div>
-
-          <div className="rounded-2xl bg-card p-8 card-shadow space-y-4">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
-              <CheckCircle2 className="h-8 w-8 text-success" />
-            </div>
-            <h2 className="font-display text-xl font-bold text-foreground">
-              Compte créé !
-            </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {successMsg || "Un email de vérification a été envoyé."}
-              <br /><br />
-              Vérifiez la boîte de réception de{" "}
-              <span className="font-medium text-foreground">{email}</span>{" "}
-              et cliquez sur le lien de confirmation pour activer le compte{" "}
-              <span className="font-medium text-foreground">@{username}</span>,
-              puis connectez-vous.
-            </p>
-
-            {/* Timeline */}
-            <div className="rounded-xl bg-muted/50 p-4 text-left space-y-3">
-              {[
-                { step: "1", text: "Compte créé", done: true },
-                { step: "2", text: "Vérifier votre email", done: false },
-                { step: "3", text: "Se connecter", done: false },
-              ].map((item) => (
-                <div key={item.step} className="flex items-center gap-3">
-                  <div className={cn(
-                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-                    item.done
-                      ? "bg-success text-white"
-                      : "bg-muted-foreground/20 text-muted-foreground"
-                  )}>
-                    {item.done ? <CheckCircle2 className="h-4 w-4" /> : item.step}
-                  </div>
-                  <span className={cn("text-sm", item.done ? "text-foreground font-medium" : "text-muted-foreground")}>
-                    {item.text}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <Button asChild className="w-full">
-              <Link href="/login">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Retour à la connexion
-              </Link>
-            </Button>
-          </div>
-        </div>
       </div>
     );
   }
