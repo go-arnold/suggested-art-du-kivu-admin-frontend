@@ -163,8 +163,10 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  // Le backend crée le compte ET renvoie directement { access, refresh, user }
+  // (connexion immédiate), même si is_verified vaut false.
   register: (data: RegisterPayload) =>
-    apiFetch<{ detail: string }>("/auth/register/", {
+    apiFetch<JWT>("/auth/register/", {
       method: "POST",
       body: JSON.stringify(data),
     }),
