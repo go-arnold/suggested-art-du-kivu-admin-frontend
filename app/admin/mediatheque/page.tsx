@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { videosApi, type VideoWrite } from "@/lib/api";
+import { MediaUpload } from "@/components/admin/media-upload";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export default function MediathequePage() {
   // Ajout d'une vidéo (par URL — le backend ne gère pas l'upload de fichier)
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const EMPTY = { title: "", video_url: "", category: "freestyles", duration: "", location: "" };
+  const EMPTY = { title: "", video_url: "", category: "freestyles", duration: "", location: "", thumbnail: "" };
   const [form, setForm] = useState(EMPTY);
   const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -143,6 +144,7 @@ export default function MediathequePage() {
         published_at: new Date().toISOString(),
         duration: form.duration.trim() || undefined,
         location: form.location.trim() || undefined,
+        thumbnail: form.thumbnail || undefined,
       };
       await videosApi.create(payload);
       toast.success("Vidéo ajoutée");
@@ -444,8 +446,7 @@ export default function MediathequePage() {
           <DialogHeader>
             <DialogTitle>Ajouter une vidéo</DialogTitle>
             <DialogDescription>
-              Les vidéos s&apos;ajoutent par lien (fichier .mp4 ou flux .m3u8) — l&apos;hébergement du fichier
-              se fait à part.
+              Téléverse un fichier vidéo, ou colle un lien (.mp4 / .m3u8). Ajoute une miniature si tu veux.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -453,10 +454,19 @@ export default function MediathequePage() {
               <Label>Titre *</Label>
               <Input value={form.title} onChange={(e) => setField("title", e.target.value)} placeholder="Titre de la vidéo" />
             </div>
+            <MediaUpload
+              label="Fichier vidéo (upload)" context="webtv_video" variant="video" accept="video/*"
+              value={form.video_url && !form.video_url.includes(".m3u8") ? form.video_url : null}
+              onChange={(url) => setField("video_url", url ?? "")}
+            />
             <div className="space-y-1.5">
-              <Label>URL de la vidéo *</Label>
+              <Label>…ou coller une URL de vidéo *</Label>
               <Input type="url" value={form.video_url} onChange={(e) => setField("video_url", e.target.value)} placeholder="https://… .mp4 ou .m3u8" />
             </div>
+            <MediaUpload
+              label="Miniature" context="webtv_thumbnail" aspect="video"
+              value={form.thumbnail || null} onChange={(url) => setField("thumbnail", url ?? "")}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Catégorie</Label>

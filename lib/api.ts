@@ -131,6 +131,61 @@ export interface PaginatedResponse<T> {
   results: T[];
 }
 
+// ─── Médias : upload Cloudinary (signature backend) ───────────────────────────
+// Flux : on demande une signature au backend (le secret reste côté serveur),
+// puis le navigateur envoie le fichier DIRECTEMENT à Cloudinary avec ces
+// paramètres signés, et on récupère l'URL finale (secure_url).
+
+/** Réponse (souple) de /media/upload-signature/ — paramètres signés Cloudinary. */
+export type UploadSignature = Record<string, string | number> & {
+  cloud_name?: string;
+  resource_type?: string;
+};
+
+export const mediaApi = {
+  uploadSignature: (context: string) =>
+    apiFetch<UploadSignature>("/media/upload-signature/", {
+      method: "POST",
+      body: JSON.stringify({ context }),
+    }),
+};
+
+// Nom de cloud public (fallback si la signature ne le renvoie pas).
+const CLOUDINARY_CLOUD_NAME =
+  process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || "dc4scpfuz";
+
+/**
+ * Téléverse un fichier vers Cloudinary via une signature backend, et renvoie
+ * l'URL sécurisée. `context` identifie l'usage côté backend (ex. "artist_photo",
+ * "podcast_cover"). Réémet TOUS les paramètres signés reçus → robuste quelle que
+ * soit la forme exacte de la réponse.
+ */
+export async function uploadToCloudinary(file: File, context: string): Promise<string> {
+  const sig = await mediaApi.uploadSignature(context);
+
+  const cloudName = String(sig.cloud_name || CLOUDINARY_CLOUD_NAME);
+  const resourceType = String(sig.resource_type || "auto");
+
+  const form = new FormData();
+  form.append("file", file);
+  // Réémet chaque paramètre signé (signature, timestamp, api_key, folder, …),
+  // sauf ceux de contrôle qui ne font pas partie du POST Cloudinary.
+  for (const [k, v] of Object.entries(sig)) {
+    if (k === "cloud_name" || k === "resource_type") continue;
+    form.append(k, String(v));
+  }
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
+    { method: "POST", body: form }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.secure_url) {
+    throw new Error(data?.error?.message || "Échec de l'upload Cloudinary");
+  }
+  return data.secure_url as string;
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export interface JWT {
@@ -390,6 +445,8 @@ export interface ArtistWrite {
   name: string;
   bio?: string;
   city?: string;
+  photo?: string;              // URL Cloudinary (contexte upload: artist_photo)
+  cover_image?: string;        // URL Cloudinary (contexte upload: artist_cover)
   genres?: number[];           // array of genre IDs
   is_featured?: boolean;
   social_links?: {
@@ -518,6 +575,7 @@ export interface EmissionWrite {
   duration_minutes?: number;
   stream_url?: string;
   status?: EmissionStatus;
+  cover?: string;                // URL Cloudinary (contexte upload: emission_cover)
 }
 
 /** Détail émission avec les URLs de lecture Cloudflare Stream */
@@ -616,6 +674,7 @@ export interface PodcastSeriesWrite {
   title: string;
   category: string;      // slug: talk | culture | musique | societe | jeunesse | sport
   description?: string;
+  cover?: string;        // URL Cloudinary (contexte upload: podcast_cover)
   is_featured?: boolean;
 }
 
@@ -681,6 +740,7 @@ export interface ReleaseWrite {
   release_date: string;        // requis (date YYYY-MM-DD)
   description?: string;
   preview_url?: string;
+  cover?: string;              // URL Cloudinary (contexte upload: release_cover)
   is_featured?: boolean;
   is_premiere?: boolean;
 }
@@ -916,6 +976,7 @@ export interface RadioProgramWrite {
   presenter?: string;
   status?: RadioStatus;
   stream_url?: string;
+  cover?: string;              // URL Cloudinary (contexte upload: radio_cover)
 }
 
 export const radioApi = {

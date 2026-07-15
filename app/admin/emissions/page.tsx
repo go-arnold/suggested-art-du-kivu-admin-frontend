@@ -26,6 +26,7 @@ import {
 import { emissionsApi, commentsApi, type EmissionList, type EmissionWrite, type EmissionDetail, type EmissionStatus } from "@/lib/api";
 import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
+import { MediaUpload } from "@/components/admin/media-upload";
 import { toast } from "sonner";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -70,6 +71,7 @@ const EMPTY_FORM: EmissionWrite = {
   status: "scheduled",
   scheduled_at: "",
   duration_minutes: 60,
+  cover: "",
 };
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -121,6 +123,7 @@ export default function EmissionsPage() {
       scheduled_at: show.scheduled_at ? show.scheduled_at.slice(0, 16) : "",
       duration_minutes: show.duration_minutes ?? 0,
       stream_url: show.stream_url || undefined,
+      cover: show.cover_url ?? "",
     });
     setDialogOpen(true);
     try {
@@ -156,6 +159,7 @@ export default function EmissionsPage() {
         scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
         duration_minutes: form.duration_minutes || undefined,
         stream_url: form.stream_url?.trim() || undefined,
+        cover: form.cover || undefined,
       };
       if (editingSlug) {
         await emissionsApi.update(editingSlug, payload);
@@ -279,6 +283,10 @@ export default function EmissionsPage() {
                 <Textarea placeholder="Décrivez votre émission..." rows={3} value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
+              <MediaUpload
+                label="Couverture" context="emission_cover" aspect="video"
+                value={form.cover || null} onChange={(url) => setForm({ ...form, cover: url ?? "" })}
+              />
               <div className="grid gap-2">
                 <Label>Statut</Label>
                 <Select value={form.status ?? "scheduled"}

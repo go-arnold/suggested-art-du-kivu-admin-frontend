@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, chatToMod } from "@/components/admin/moderation-dialog";
+import { MediaUpload } from "@/components/admin/media-upload";
 import {
   radioApi, radioChatApi, type RadioProgram, type RadioProgramWrite, type RadioStatus,
 } from "@/lib/api";
@@ -38,7 +39,7 @@ const STATUS_COLORS: Record<RadioStatus, string> = {
 const EMPTY = {
   title: "", presenter: "", description: "",
   day_of_week: "0", start_time: "", end_time: "",
-  status: "upcoming" as RadioStatus, stream_url: "",
+  status: "upcoming" as RadioStatus, stream_url: "", cover: "",
 };
 
 export default function RadioPage() {
@@ -84,6 +85,7 @@ export default function RadioPage() {
       day_of_week: String(r.day_of_week ?? 0),
       start_time: (r.start_time ?? "").slice(0, 5), end_time: (r.end_time ?? "").slice(0, 5),
       status: r.status ?? "upcoming", stream_url: r.stream_url ?? "",
+      cover: r.cover_url ?? "",
     });
     setOpen(true);
   };
@@ -102,6 +104,7 @@ export default function RadioPage() {
         day_of_week: Number(form.day_of_week),
         status: form.status,
         stream_url: form.stream_url.trim() || undefined,
+        cover: form.cover || undefined,
       };
       if (editingId) {
         await radioApi.update(editingId, payload);
@@ -269,6 +272,10 @@ export default function RadioPage() {
               <Label>Titre *</Label>
               <Input value={form.title} onChange={(e) => setField("title", e.target.value)} placeholder="Ex: Matinale du Kivu" />
             </div>
+            <MediaUpload
+              label="Couverture" context="radio_cover" aspect="video"
+              value={form.cover || null} onChange={(url) => setField("cover", url ?? "")}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Animateur</Label>
