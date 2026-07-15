@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, commentToMod, chatToMod } from "@/components/admin/moderation-dialog";
+import { MediaUpload } from "@/components/admin/media-upload";
 import { videosApi, commentsApi, chatApi, type VideoListItem, type VideoDetail, type VideoWrite } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -54,7 +55,7 @@ export default function WebTvPage() {
 
   const emptyForm = {
     title: "", category: "freestyles", video_url: "", description: "",
-    duration: "", location: "", is_premier: false, published_at: "",
+    duration: "", location: "", is_premier: false, published_at: "", thumbnail: "",
   };
   const [form, setForm] = useState(emptyForm);
   const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -154,6 +155,7 @@ export default function WebTvPage() {
         duration: form.duration.trim() || undefined,
         location: form.location.trim() || undefined,
         is_premier: form.is_premier,
+        thumbnail: form.thumbnail || undefined,
       };
       const created = await videosApi.create(payload);
       toast.success("Vidéo créée");
@@ -367,14 +369,23 @@ export default function WebTvPage() {
                 onChange={(e) => setField("published_at", e.target.value)} />
               <p className="text-xs text-muted-foreground">Laissez vide pour publier maintenant.</p>
             </div>
+            <MediaUpload
+              label="Fichier vidéo (upload)" context="webtv_video" variant="video" accept="video/*"
+              value={form.video_url && !form.video_url.includes(".m3u8") ? form.video_url : null}
+              onChange={(url) => setField("video_url", url ?? "")}
+            />
             <div className="space-y-1.5">
-              <Label htmlFor="wt-url">URL de la vidéo *</Label>
+              <Label htmlFor="wt-url">…ou coller une URL de vidéo *</Label>
               <Input id="wt-url" value={form.video_url} onChange={(e) => setField("video_url", e.target.value)}
                 placeholder="https://… (fichier .mp4 ou lien .m3u8)" />
               <p className="text-xs text-muted-foreground">
                 Lien de lecture / rediffusion. Pour un direct, indiquez le lien de rediffusion prévu.
               </p>
             </div>
+            <MediaUpload
+              label="Miniature" context="webtv_thumbnail" aspect="video"
+              value={form.thumbnail || null} onChange={(url) => setField("thumbnail", url ?? "")}
+            />
             <div className="space-y-1.5">
               <Label htmlFor="wt-location">Lieu</Label>
               <Input id="wt-location" value={form.location} onChange={(e) => setField("location", e.target.value)}

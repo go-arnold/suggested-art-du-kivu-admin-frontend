@@ -29,6 +29,7 @@ import {
   type PodcastSeriesWrite,
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
+import { MediaUpload } from "@/components/admin/media-upload";
 import { toast } from "sonner";
 
 const EMPTY_EP = {
@@ -66,7 +67,7 @@ export default function PodcastsPage() {
   const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
   const [seriesDialogOpen, setSeriesDialogOpen] = useState(false);
   const [savingSeries, setSavingSeries] = useState(false);
-  const EMPTY_SERIES = { title: "", category: "", description: "", is_featured: false };
+  const EMPTY_SERIES = { title: "", category: "", description: "", cover: "", is_featured: false };
   const [seriesForm, setSeriesForm] = useState(EMPTY_SERIES);
 
   const loadPodcasts = useCallback(async (): Promise<PodcastSeriesList[]> => {
@@ -101,6 +102,7 @@ export default function PodcastsPage() {
         title: seriesForm.title.trim(),
         category: seriesForm.category,
         description: seriesForm.description.trim() || undefined,
+        cover: seriesForm.cover || undefined,
         is_featured: seriesForm.is_featured,
       };
       const created = await podcastsApi.create(payload);
@@ -277,8 +279,12 @@ export default function PodcastsPage() {
                 <Textarea placeholder="Décrivez cet épisode..." rows={3} value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
+              <MediaUpload
+                label="Fichier audio (upload)" context="podcast_audio" variant="audio" accept="audio/*"
+                value={form.audio_url || null} onChange={(url) => setForm({ ...form, audio_url: url ?? "" })}
+              />
               <div className="grid gap-2">
-                <Label>Fichier audio (URL)</Label>
+                <Label>…ou coller une URL audio</Label>
                 <Input type="url" placeholder="https://… .mp3" value={form.audio_url}
                   onChange={(e) => setForm({ ...form, audio_url: e.target.value })} />
               </div>
@@ -568,6 +574,10 @@ export default function PodcastsPage() {
               <Input placeholder="Ex: Les voix du Kivu" value={seriesForm.title}
                 onChange={(e) => setSeriesForm({ ...seriesForm, title: e.target.value })} />
             </div>
+            <MediaUpload
+              label="Couverture" context="podcast_cover" aspect="square"
+              value={seriesForm.cover || null} onChange={(url) => setSeriesForm({ ...seriesForm, cover: url ?? "" })}
+            />
             <div className="grid gap-2">
               <Label>Catégorie *</Label>
               <Select value={seriesForm.category}

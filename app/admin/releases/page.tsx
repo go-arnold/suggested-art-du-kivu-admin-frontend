@@ -26,6 +26,7 @@ import {
   type ReleaseList, type ReleaseWrite, type ReleaseFormat, type ArtistList,
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
+import { MediaUpload } from "@/components/admin/media-upload";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -42,7 +43,7 @@ const FORMATS = Object.keys(FORMAT_LABELS) as ReleaseFormat[];
 
 const EMPTY = {
   artist: "", title: "", format: "single" as ReleaseFormat,
-  release_date: "", description: "", preview_url: "",
+  release_date: "", description: "", preview_url: "", cover: "",
   is_featured: false, is_premiere: false,
 };
 
@@ -93,7 +94,7 @@ export default function ReleasesPage() {
       title: r.title ?? "",
       format: (r.format as ReleaseFormat) ?? "single",
       release_date: r.release_date ?? "",
-      description: "", preview_url: "",
+      description: "", preview_url: "", cover: r.cover_url ?? "",
       is_featured: !!r.is_featured, is_premiere: !!r.is_premiere,
     });
     setOpen(true);
@@ -112,6 +113,7 @@ export default function ReleasesPage() {
         release_date: form.release_date,
         description: form.description.trim() || undefined,
         preview_url: form.preview_url.trim() || undefined,
+        cover: form.cover || undefined,
         is_featured: form.is_featured,
         is_premiere: form.is_premiere,
       };
@@ -245,6 +247,10 @@ export default function ReleasesPage() {
               <Label>Titre *</Label>
               <Input value={form.title} onChange={(e) => setField("title", e.target.value)} placeholder="Titre de la sortie" />
             </div>
+            <MediaUpload
+              label="Pochette" context="release_cover" aspect="square"
+              value={form.cover || null} onChange={(url) => setField("cover", url ?? "")}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Artiste *</Label>

@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { artistsApi } from "@/lib/api";
+import { artistsApi, uploadToCloudinary } from "@/lib/api";
+import { MediaUpload } from "@/components/admin/media-upload";
 import { toast } from "sonner";
 
 export default function NouvelArtistePage() {
@@ -25,15 +26,23 @@ export default function NouvelArtistePage() {
   const [twitter,    setTwitter]    = useState("");
   const [youtube,    setYoutube]    = useState("");
   const [photo,      setPhoto]      = useState<string | null>(null);
+  const [cover,      setCover]      = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleImage = (file: File | undefined) => {
+  // Téléverse la photo vers Cloudinary (via signature backend) et garde l'URL.
+  const handleImage = async (file: File | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setPhoto(String(reader.result));
-    reader.readAsDataURL(file);
+    setUploadingPhoto(true);
+    try {
+      setPhoto(await uploadToCloudinary(file, "artist_photo"));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Échec du téléversement de la photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,6 +62,8 @@ export default function NouvelArtistePage() {
         name:        name.trim(),
         bio:         bio.trim() || undefined,
         city:        city.trim() || undefined,
+        photo:       photo || undefined,
+        cover_image: cover || undefined,
         is_featured: isFeatured,
         social_links: Object.keys(social_links).length ? social_links : undefined,
       });
@@ -151,14 +162,28 @@ export default function NouvelArtistePage() {
               </div>
             ) : (
               <div
-                onClick={() => fileRef.current?.click()}
+                onClick={() => !uploadingPhoto && fileRef.current?.click()}
                 className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors"
               >
-                <Upload className="h-10 w-10 text-muted-foreground mb-3" />
-                <p className="text-sm font-medium text-muted-foreground">Ajouter une photo</p>
-                <p className="text-xs text-muted-foreground mt-1">JPG, PNG — max 5MB</p>
+                {uploadingPhoto ? (
+                  <>
+                    <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+                    <p className="text-sm font-medium text-muted-foreground">Téléversement…</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-10 w-10 text-muted-foreground mb-3" />
+                    <p className="text-sm font-medium text-muted-foreground">Ajouter une photo</p>
+                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG — max 5MB</p>
+                  </>
+                )}
               </div>
             )}
+
+            <MediaUpload
+              label="Bannière" context="artist_cover" aspect="video"
+              value={cover} onChange={setCover}
+            />
           </div>
 
           {/* Options */}
