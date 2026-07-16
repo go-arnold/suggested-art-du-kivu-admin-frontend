@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Headphones, Play, Pause, Plus, Search, Filter, MoreHorizontal,
   Clock, Calendar, BarChart3, Mic, Edit, Trash2, Heart, Loader2, MessageSquare,
@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const EMPTY_EP = {
@@ -58,6 +59,23 @@ export default function PodcastsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("episodes");
   const [playingId, setPlayingId] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Lance / arrête réellement la lecture de l'audio d'un épisode.
+  // La liste ne renvoie pas audio_url → on le récupère via le détail.
+  const togglePlay = async (ep: EpisodeList) => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playingId === ep.id) { a.pause(); setPlayingId(null); return; }
+    let url = ep.audio_url ?? undefined;
+    if (!url) {
+      try { url = (await podcastsApi.episodes.get(ep.slug)).audio_url ?? undefined; }
+      catch { /* on gère juste en dessous */ }
+    }
+    if (!url) { toast.error("Aucun fichier audio pour cet épisode"); return; }
+    a.src = url;
+    a.play().then(() => setPlayingId(ep.id)).catch(() => toast.error("Lecture impossible — réessaie"));
+  };
   const [form, setForm] = useState(EMPTY_EP);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -416,97 +434,60 @@ export default function PodcastsPage() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="space-y-3">
-              {episodes.map((ep) => (
-                <Card key={ep.id} className="card-shadow">
-                  <CardContent className="flex items-center gap-4 p-4">
-                    {/* Thumbnail + play */}
-                    <div className="relative h-16 w-16 flex-shrink-0 rounded-lg bg-muted">
-                      <img src={ep.cover_url || "/placeholder.svg"}
-                        alt={ep.series_title ?? ep.series?.title ?? "Podcast"}
-                        loading="lazy" decoding="async"
-                        className="h-full w-full rounded-lg object-cover" />
-                      <button
-                        onClick={() => setPlayingId(playingId === ep.id ? null : ep.id)}
-                        className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40 opacity-0 transition-opacity hover:opacity-100"
-                      >
+            episodes.length === 0 ? (
+              <Card className="card-shadow">
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Headphones className="h-12 w-12 text-muted-foreground/50" />
+                  <h3 className="mt-4 font-semibold text-foreground">Aucun épisode trouvé</h3>
+                  <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={() => setIsCreateDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />Créer un épisode
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                {episodes.map((ep) => (
+                  <div key={ep.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
+                    <div className="relative aspect-square bg-muted">
+                      {ep.cover_url ? (
+                        <img src={ep.cover_url} alt={ep.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center"><Headphones className="h-10 w-10 text-muted-foreground/30" /></div>
+                      )}
+                      {ep.is_featured && <Badge className="absolute left-2 top-2 bg-primary text-primary-foreground text-[10px]">Featured</Badge>}
+                      <button onClick={() => togglePlay(ep)}
+                        className={cn("absolute inset-0 flex items-center justify-center transition-colors",
+                          playingId === ep.id ? "bg-black/40" : "bg-black/0 group-hover:bg-black/30")}>
                         {playingId === ep.id
-                          ? <Pause className="h-6 w-6 text-white" />
-                          : <Play className="h-6 w-6 text-white" />}
+                          ? <Pause className="h-10 w-10 text-white" />
+                          : <Play className="h-10 w-10 text-white opacity-0 transition-opacity group-hover:opacity-100" />}
                       </button>
                     </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {ep.is_featured && (
-                          <Badge className="bg-primary text-primary-foreground text-xs">Featured</Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {ep.series_title ?? ep.series?.title ?? "—"}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          S{ep.season_number}E{ep.episode_number}
-                        </span>
+                    <div className="p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="truncate text-sm font-medium" title={ep.title}>{ep.title}</p>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(ep)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setComments(ep)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteEpisode(ep.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <h3 className="mt-1 font-semibold text-foreground line-clamp-1">{ep.title}</h3>
-                      <p className="text-sm text-muted-foreground line-clamp-1">{ep.description}</p>
-                      <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                        {ep.published_at && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(ep.published_at).toLocaleDateString("fr-FR", {
-                              day: "numeric", month: "short",
-                            })}
-                          </span>
-                        )}
-                        {ep.duration && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />{ep.duration}
-                          </span>
-                        )}
-                        {ep.play_count > 0 && (
-                          <span className="flex items-center gap-1">
-                            <Headphones className="h-3 w-3" />{ep.play_count.toLocaleString()}
-                          </span>
-                        )}
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="truncate">{ep.series_title ?? ep.series?.title ?? "—"}</span>
+                        {ep.duration && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{ep.duration}</span>}
+                        {ep.play_count > 0 && <span className="flex items-center gap-1"><Headphones className="h-3 w-3" />{ep.play_count.toLocaleString()}</span>}
                       </div>
                     </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(ep)}>
-                          <Edit className="mr-2 h-4 w-4" />Modifier
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setComments(ep)}>
-                          <MessageSquare className="mr-2 h-4 w-4" />Commentaires
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteEpisode(ep.slug)}>
-                          <Trash2 className="mr-2 h-4 w-4" />Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </CardContent>
-                </Card>
-              ))}
-
-              {episodes.length === 0 && (
-                <Card className="card-shadow">
-                  <CardContent className="flex flex-col items-center justify-center py-12">
-                    <Headphones className="h-12 w-12 text-muted-foreground/50" />
-                    <h3 className="mt-4 font-semibold text-foreground">Aucun épisode trouvé</h3>
-                    <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={() => setIsCreateDialogOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />Créer un épisode
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </TabsContent>
 
@@ -630,6 +611,9 @@ export default function PodcastsPage() {
           remove={(cid) => commentsApi.remove("podcasts/episodes", comments.slug, cid)}
         />
       )}
+
+      {/* Lecteur audio (caché) — pilote la lecture des épisodes. */}
+      <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
     </div>
   );
 }

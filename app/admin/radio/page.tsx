@@ -25,7 +25,7 @@ import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, chatToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
 import {
-  radioApi, radioChatApi, type RadioProgram, type RadioProgramWrite, type RadioStatus,
+  radioApi, radioChatApi, extractStreamCreds, type RadioProgram, type RadioProgramWrite, type RadioStatus,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -74,6 +74,20 @@ export default function RadioPage() {
   }, [search, status]);
 
   useEffect(() => { fetch(); }, [fetch]);
+
+  // Pendant l'écoute d'un direct, ré-interroge le programme toutes les 8 s
+  // jusqu'à ce que le flux (playback_hls_url) apparaisse (délai MediaMTX ~15 s).
+  useEffect(() => {
+    if (watch?.status !== "live" || watch.playback_hls_url) return;
+    const rid = watch.id;
+    const t = setInterval(async () => {
+      try {
+        const fresh = await radioApi.get(rid);
+        setWatch((w) => (w && w.id === rid ? fresh : w));
+      } catch { /* retentera */ }
+    }, 8000);
+    return () => clearInterval(t);
+  }, [watch?.id, watch?.status, watch?.playback_hls_url]);
 
   const copy = (v: string) => { navigator.clipboard.writeText(v); toast.success("Copié"); };
 
@@ -126,9 +140,10 @@ export default function RadioPage() {
     try {
       const res = await radioApi.goLive(r.id);
       toast.success("Passage à l'antenne démarré");
-      if (res?.cf_rtmps_url && res?.cf_rtmps_key) {
-        setLiveCreds({ title: r.title, url: res.cf_rtmps_url, key: res.cf_rtmps_key });
-      }
+      const creds = extractStreamCreds(res);
+      if (creds) setLiveCreds({ title: r.title, ...creds });
+      else toast.warning("Antenne démarrée, mais les identifiants RTMPS n'ont pas été renvoyés (voir la console).");
+      console.log("go_live response (radio):", res);
       fetch();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur au démarrage");
@@ -213,49 +228,51 @@ export default function RadioPage() {
           <p className="mt-4 text-sm text-muted-foreground">Aucun programme.</p>
         </CardContent></Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {items.map((r) => (
-            <Card key={r.id} className="card-shadow">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="relative h-16 w-16 shrink-0 rounded-lg bg-muted">
-                  {r.cover_url ? (
-                    <img src={r.cover_url} alt={r.title} loading="lazy" className="h-full w-full rounded-lg object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center"><Radio className="h-7 w-7 text-muted-foreground/30" /></div>
-                  )}
-                  {r.status === "live" && <span className="absolute right-1 top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />}
+            <div key={r.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
+              <div className="relative aspect-video bg-muted">
+                {r.cover_url ? (
+                  <img src={r.cover_url} alt={r.title} loading="lazy" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center"><Radio className="h-10 w-10 text-muted-foreground/30" /></div>
+                )}
+                {r.status === "live" && (
+                  <Badge className="absolute left-2 top-2 gap-1 bg-red-500 text-white">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE
+                  </Badge>
+                )}
+              </div>
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="truncate text-sm font-medium" title={r.title}>{r.title}</p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {r.status === "live" ? (
+                        <>
+                          <DropdownMenuItem onClick={() => setWatch(r)}><Headphones className="mr-2 h-4 w-4" />Écouter le direct</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEndLive(r.id)}><Pause className="mr-2 h-4 w-4" />Arrêter l&apos;antenne</DropdownMenuItem>
+                        </>
+                      ) : (
+                        <DropdownMenuItem onClick={() => handleGoLive(r)}><Play className="mr-2 h-4 w-4" />Passer à l&apos;antenne</DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => openEdit(r)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(r.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Badge className={cn("text-[10px]", STATUS_COLORS[r.status])}>{STATUS_LABELS[r.status]}</Badge>
-                    <span className="text-xs text-muted-foreground">{r.day_name ?? DAYS[r.day_of_week] ?? ""}</span>
-                  </div>
-                  <h3 className="mt-1 truncate font-semibold text-foreground">{r.title}</h3>
-                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{(r.start_time ?? "").slice(0, 5)}–{(r.end_time ?? "").slice(0, 5)}</span>
-                    {r.presenter && <span className="flex items-center gap-1"><Mic2 className="h-3 w-3" />{r.presenter}</span>}
-                  </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <Badge className={cn("text-[10px]", STATUS_COLORS[r.status])}>{STATUS_LABELS[r.status]}</Badge>
+                  <span>{r.day_name ?? DAYS[r.day_of_week] ?? ""}</span>
+                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{(r.start_time ?? "").slice(0, 5)}–{(r.end_time ?? "").slice(0, 5)}</span>
+                  {r.presenter && <span className="flex items-center gap-1"><Mic2 className="h-3 w-3" />{r.presenter}</span>}
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {r.status === "live" ? (
-                      <>
-                        <DropdownMenuItem onClick={() => setWatch(r)}><Headphones className="mr-2 h-4 w-4" />Écouter le direct</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleEndLive(r.id)}><Pause className="mr-2 h-4 w-4" />Arrêter l'antenne</DropdownMenuItem>
-                      </>
-                    ) : (
-                      <DropdownMenuItem onClick={() => handleGoLive(r)}><Play className="mr-2 h-4 w-4" />Passer à l'antenne</DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => openEdit(r)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(r.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -340,8 +357,8 @@ export default function RadioPage() {
                 <DialogDescription>Diffusion en direct de l'antenne radio.</DialogDescription>
               </DialogHeader>
               <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-                {watch.cf_playback_hls_url ? (
-                  <HlsPlayer src={watch.cf_playback_hls_url} emptyLabel="Le direct n'a pas encore démarré." />
+                {watch.playback_hls_url ? (
+                  <HlsPlayer src={watch.playback_hls_url} muted={watch.status === "live"} emptyLabel="Le direct n'a pas encore démarré." />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Flux indisponible.</div>
                 )}
@@ -363,7 +380,7 @@ export default function RadioPage() {
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="space-y-1">
-                  <Label>Serveur (RTMPS)</Label>
+                  <Label>Serveur (RTMP)</Label>
                   <div className="flex gap-2">
                     <Input readOnly value={liveCreds.url} className="font-mono text-xs" />
                     <Button variant="outline" size="icon" onClick={() => copy(liveCreds.url)}><Copy className="h-4 w-4" /></Button>

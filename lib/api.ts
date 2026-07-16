@@ -582,8 +582,28 @@ export interface EmissionWrite {
 
 /** Détail émission avec les URLs de lecture Cloudflare Stream */
 export interface EmissionDetail extends EmissionList {
-  cf_playback_hls_url?: string;
-  cf_playback_dash_url?: string;
+  playback_hls_url?: string;
+}
+
+/**
+ * Extrait les identifiants RTMPS d'une réponse go_live, quelle que soit la
+ * forme des champs (le backend peut les nommer cf_rtmps_*, rtmps_*, ou les
+ * imbriquer dans un objet rtmps). Renvoie null si introuvables.
+ */
+export function extractStreamCreds(
+  res: unknown
+): { url: string; key: string } | null {
+  const r = (res ?? {}) as Record<string, unknown>;
+  const rtmps = (r.rtmps ?? {}) as Record<string, unknown>;
+  const url =
+    r.rtmp_server_url ?? r.cf_rtmps_url ?? r.rtmps_url ?? r.stream_url ?? r.ingest_url ??
+    rtmps.url ?? rtmps.streamUrl;
+  const key =
+    r.stream_key ?? r.cf_rtmps_key ?? r.rtmps_key ?? r.ingest_key ??
+    rtmps.key ?? rtmps.streamKey;
+  return typeof url === "string" && typeof key === "string" && url && key
+    ? { url, key }
+    : null;
 }
 
 export const emissionsApi = {
@@ -611,7 +631,7 @@ export const emissionsApi = {
   // Démarrer / arrêter la diffusion (Cloudflare Stream). go_live renvoie les
   // identifiants RTMPS (à afficher une seule fois pour OBS).
   goLive: (slug: string) =>
-    apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+    apiFetch<{ rtmp_server_url?: string; stream_key?: string; playback_hls_url?: string; status?: string; is_live?: boolean }>(
       `/emissions/${slug}/go_live/`, { method: "POST" }
     ),
   endLive: (slug: string) =>
@@ -802,8 +822,7 @@ export interface VideoListItem {
 export interface VideoDetail extends VideoListItem {
   description?: string;
   video_url?: string;
-  cf_playback_hls_url?: string;
-  cf_playback_dash_url?: string;
+  playback_hls_url?: string;
 }
 
 export interface VideoWrite {
@@ -830,12 +849,17 @@ export const videosApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  update: (slug: string, data: Partial<VideoWrite>) =>
+    apiFetch<VideoDetail>(`/webtv/videos/${slug}/`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   delete: (slug: string) =>
     apiFetch<void>(`/webtv/videos/${slug}/`, { method: "DELETE" }),
   share: (slug: string) =>
     apiFetch<{ share_count?: number }>(`/webtv/videos/${slug}/share/`, { method: "POST" }),
   goLive: (slug: string) =>
-    apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+    apiFetch<{ rtmp_server_url?: string; stream_key?: string; playback_hls_url?: string; status?: string; is_live?: boolean }>(
       `/webtv/videos/${slug}/go_live/`, { method: "POST" }
     ),
   endLive: (slug: string) =>
@@ -965,8 +989,7 @@ export interface RadioProgram {
   presenter?: string;
   status: RadioStatus;
   stream_url?: string;
-  cf_playback_hls_url?: string;
-  cf_playback_dash_url?: string;
+  playback_hls_url?: string;
   listener_count?: number;
 }
 
@@ -994,7 +1017,7 @@ export const radioApi = {
   delete: (id: number) =>
     apiFetch<void>(`/radio/program/${id}/`, { method: "DELETE" }),
   goLive: (id: number) =>
-    apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+    apiFetch<{ rtmp_server_url?: string; stream_key?: string; playback_hls_url?: string; status?: string; is_live?: boolean }>(
       `/radio/program/${id}/go_live/`, { method: "POST" }),
   endLive: (id: number) =>
     apiFetch<void>(`/radio/program/${id}/end_live/`, { method: "POST" }),
@@ -1010,8 +1033,7 @@ export interface MusicLiveSession {
   slug: string;
   artist_names?: string;
   status: MusicSessionStatus;
-  cf_playback_hls_url?: string;
-  cf_playback_dash_url?: string;
+  playback_hls_url?: string;
   online_followers?: string;
   live_started_at?: string | null;
   created_at?: string;
@@ -1057,7 +1079,7 @@ export const liveMusicApi = {
     delete: (slug: string) =>
       apiFetch<void>(`/live_music/sessions/${slug}/`, { method: "DELETE" }),
     goLive: (slug: string) =>
-      apiFetch<{ cf_rtmps_url?: string; cf_rtmps_key?: string }>(
+      apiFetch<{ rtmp_server_url?: string; stream_key?: string; playback_hls_url?: string; status?: string; is_live?: boolean }>(
         `/live_music/sessions/${slug}/go_live/`, { method: "POST" }),
     endLive: (slug: string) =>
       apiFetch<void>(`/live_music/sessions/${slug}/end_live/`, { method: "POST" }),

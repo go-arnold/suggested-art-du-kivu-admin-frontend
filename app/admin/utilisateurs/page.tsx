@@ -203,7 +203,7 @@ export default function UtilisateursPage() {
           const roleOk = !roleChanged || fresh.role === editForm.role;
           const activeOk = !activeChanged || fresh.is_active === undefined || fresh.is_active === editForm.is_active;
           if (!roleOk || !activeOk) {
-            toast.warning("Enregistré, mais le backend n'a pas appliqué le rôle/l'activation (champs non modifiables côté API).");
+            toast.error("Rôle/activation non modifiables.");
           } else {
             toast.success("Utilisateur mis à jour");
           }

@@ -26,7 +26,7 @@ import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, commentToMod, chatToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
 import {
-  liveMusicApi, artistsApi, commentsApi, chatApi,
+  liveMusicApi, artistsApi, commentsApi, chatApi, extractStreamCreds,
   type MusicLiveSession, type MusicLiveSessionWrite, type MusicSessionStatus,
   type MusicLiveSlot, type MusicLiveSlotWrite, type ArtistList,
 } from "@/lib/api";
@@ -97,8 +97,23 @@ export default function LiveMusicPage() {
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
   useEffect(() => { fetchSlots(); }, [fetchSlots]);
 
+  // Pendant qu'on regarde un direct, ré-interroge la session toutes les 8 s
+  // jusqu'à ce que le flux (playback_hls_url) apparaisse (délai MediaMTX ~15 s).
+  useEffect(() => {
+    if (watch?.status !== "live" || watch.playback_hls_url) return;
+    const slug = watch.slug;
+    const id = setInterval(async () => {
+      try {
+        const fresh = await liveMusicApi.sessions.get(slug);
+        setWatch((w) => (w && w.slug === slug ? fresh : w));
+      } catch { /* retentera */ }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [watch?.slug, watch?.status, watch?.playback_hls_url]);
+
   // ── Sessions handlers ──
   const openCreateS = () => { setEditS(null); setSForm({ title: "", status: "scheduled", artists: [], cover: "" }); setSOpen(true); };
+  const openEditS = (s: MusicLiveSession) => { setEditS(s.slug); setSForm({ title: s.title ?? "", status: s.status, artists: [], cover: "" }); setSOpen(true); };
   const toggleArtist = (id: number) =>
     setSForm((f) => ({ ...f, artists: f.artists.includes(id) ? f.artists.filter((x) => x !== id) : [...f.artists, id] }));
 
@@ -123,7 +138,10 @@ export default function LiveMusicPage() {
     try {
       const res = await liveMusicApi.sessions.goLive(s.slug);
       toast.success("Session en direct");
-      if (res?.cf_rtmps_url && res?.cf_rtmps_key) setLiveCreds({ title: s.title, url: res.cf_rtmps_url, key: res.cf_rtmps_key });
+      const creds = extractStreamCreds(res);
+      if (creds) setLiveCreds({ title: s.title, ...creds });
+      else toast.warning("Direct démarré, mais les identifiants RTMPS n'ont pas été renvoyés (voir la console).");
+      console.log("go_live response (live-music):", res);
       fetchSessions();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur au démarrage"); }
   };
@@ -132,7 +150,7 @@ export default function LiveMusicPage() {
     catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur à l'arrêt"); }
   };
   const shareSession = async (s: MusicLiveSession) => {
-    const link = s.cf_playback_hls_url || "";
+    const link = s.playback_hls_url || "";
     if (!link) { toast.error("Aucun lien de lecture"); return; }
     await navigator.clipboard.writeText(link); toast.success("Lien copié");
   };
@@ -228,46 +246,58 @@ export default function LiveMusicPage() {
               <Music className="h-12 w-12 text-muted-foreground/50" /><p className="mt-4 text-sm text-muted-foreground">Aucune session.</p>
             </CardContent></Card>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
               {sessions.map((s) => (
-                <Card key={s.id} className="card-shadow">
-                  <CardContent className="flex items-center gap-4 p-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                      <Music className="h-6 w-6 text-primary" />
+                <div key={s.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
+                  <div className="relative flex aspect-video items-center justify-center bg-primary/5">
+                    <Music className="h-10 w-10 text-primary/30" />
+                    {s.status === "live" && (
+                      <Badge className="absolute left-2 top-2 gap-1 bg-red-500 text-white">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE
+                      </Badge>
+                    )}
+                    {(s.status === "live" || (s.status === "ended" && s.playback_hls_url)) && (
+                      <button onClick={() => setWatch(s)}
+                        className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
+                        <Play className="h-10 w-10 text-primary opacity-0 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="truncate text-sm font-medium" title={s.title}>{s.title}</p>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {s.status === "live" ? (
+                            <>
+                              <DropdownMenuItem onClick={() => setWatch(s)}><Eye className="mr-2 h-4 w-4" />Regarder</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => endLive(s.slug)}><Pause className="mr-2 h-4 w-4" />Arrêter le direct</DropdownMenuItem>
+                            </>
+                          ) : (
+                            <DropdownMenuItem onClick={() => goLive(s)}><Play className="mr-2 h-4 w-4" />Passer en direct</DropdownMenuItem>
+                          )}
+                          {s.status === "ended" && s.playback_hls_url && (
+                            <DropdownMenuItem onClick={() => setWatch(s)}><Eye className="mr-2 h-4 w-4" />Voir la rediffusion</DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => shareSession(s)}><Share2 className="mr-2 h-4 w-4" />Partager</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setComments(s)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
+                          {s.status === "live" && <DropdownMenuItem onClick={() => setChatFor(s)}><MessagesSquare className="mr-2 h-4 w-4" />Chat du direct</DropdownMenuItem>}
+                          <DropdownMenuItem onClick={() => openEditS(s)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive" onClick={() => delSession(s.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <Badge className={cn("text-[10px]", S_COLORS[s.status])}>{S_LABELS[s.status]}</Badge>
-                        {s.online_followers && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Users className="h-3 w-3" />{s.online_followers}</span>}
-                      </div>
-                      <h3 className="mt-1 truncate font-semibold text-foreground">{s.title}</h3>
-                      {s.artist_names && <p className="truncate text-xs text-muted-foreground">{s.artist_names}</p>}
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge className={cn("text-[10px]", S_COLORS[s.status])}>{S_LABELS[s.status]}</Badge>
+                      {s.artist_names && <span className="truncate">{s.artist_names}</span>}
+                      {s.online_followers && <span className="flex items-center gap-1"><Users className="h-3 w-3" />{s.online_followers}</span>}
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {s.status === "live" ? (
-                          <>
-                            <DropdownMenuItem onClick={() => setWatch(s)}><Eye className="mr-2 h-4 w-4" />Regarder</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => endLive(s.slug)}><Pause className="mr-2 h-4 w-4" />Arrêter le direct</DropdownMenuItem>
-                          </>
-                        ) : (
-                          <DropdownMenuItem onClick={() => goLive(s)}><Play className="mr-2 h-4 w-4" />Passer en direct</DropdownMenuItem>
-                        )}
-                        {s.status === "ended" && s.cf_playback_hls_url && (
-                          <DropdownMenuItem onClick={() => setWatch(s)}><Eye className="mr-2 h-4 w-4" />Voir la rediffusion</DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => shareSession(s)}><Share2 className="mr-2 h-4 w-4" />Partager</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setComments(s)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
-                        {s.status === "live" && <DropdownMenuItem onClick={() => setChatFor(s)}><MessagesSquare className="mr-2 h-4 w-4" />Chat du direct</DropdownMenuItem>}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive" onClick={() => delSession(s.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -423,8 +453,8 @@ export default function LiveMusicPage() {
                 <DialogDescription>{watch.status === "live" ? "Diffusion en direct." : "Lecture de la rediffusion."}</DialogDescription>
               </DialogHeader>
               <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-                {watch.cf_playback_hls_url ? (
-                  <HlsPlayer src={watch.cf_playback_hls_url} emptyLabel={watch.status === "live" ? "Le direct n'a pas encore démarré." : "Rediffusion indisponible."} />
+                {watch.playback_hls_url ? (
+                  <HlsPlayer src={watch.playback_hls_url} muted={watch.status === "live"} emptyLabel={watch.status === "live" ? "Le direct n'a pas encore démarré." : "Rediffusion indisponible."} />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Aucune source vidéo.</div>
                 )}
@@ -446,7 +476,7 @@ export default function LiveMusicPage() {
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="space-y-1">
-                  <Label>Serveur (RTMPS)</Label>
+                  <Label>Serveur (RTMP)</Label>
                   <div className="flex gap-2">
                     <Input readOnly value={liveCreds.url} className="font-mono text-xs" />
                     <Button variant="outline" size="icon" onClick={() => copy(liveCreds.url)}><Copy className="h-4 w-4" /></Button>
