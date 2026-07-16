@@ -260,6 +260,8 @@ export interface User {
   role: "admin" | "editor" | "moderator" | "viewer" | "user";
   is_active?: boolean;
   is_verified?: boolean;
+  is_online?: boolean;
+  listen_count?: number;
   avatar_url?: string | null;
   created_at?: string;
   last_login?: string;
@@ -668,6 +670,7 @@ export interface EpisodeWrite {
   episode_number?: number;
   season_number?: number;
   is_featured?: boolean;
+  cover?: string;             // URL Cloudinary (upload via contexte podcast_cover)
 }
 
 export interface PodcastSeriesWrite {
@@ -1018,6 +1021,7 @@ export interface MusicLiveSessionWrite {
   title: string;               // seul champ requis
   artists?: number[];
   status?: MusicSessionStatus;
+  cover?: string;              // URL Cloudinary (upload via un contexte image valide)
 }
 
 export interface MusicLiveSlot {

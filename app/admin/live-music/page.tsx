@@ -24,6 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, commentToMod, chatToMod } from "@/components/admin/moderation-dialog";
+import { MediaUpload } from "@/components/admin/media-upload";
 import {
   liveMusicApi, artistsApi, commentsApi, chatApi,
   type MusicLiveSession, type MusicLiveSessionWrite, type MusicSessionStatus,
@@ -49,8 +50,8 @@ export default function LiveMusicPage() {
   const [sOpen, setSOpen] = useState(false);
   const [savingS, setSavingS] = useState(false);
   const [editS, setEditS] = useState<string | null>(null);
-  const [sForm, setSForm] = useState<{ title: string; status: MusicSessionStatus; artists: number[] }>({
-    title: "", status: "scheduled", artists: [],
+  const [sForm, setSForm] = useState<{ title: string; status: MusicSessionStatus; artists: number[]; cover: string }>({
+    title: "", status: "scheduled", artists: [], cover: "",
   });
   const [watch, setWatch] = useState<MusicLiveSession | null>(null);
   const [liveCreds, setLiveCreds] = useState<{ title: string; url: string; key: string } | null>(null);
@@ -97,7 +98,7 @@ export default function LiveMusicPage() {
   useEffect(() => { fetchSlots(); }, [fetchSlots]);
 
   // ── Sessions handlers ──
-  const openCreateS = () => { setEditS(null); setSForm({ title: "", status: "scheduled", artists: [] }); setSOpen(true); };
+  const openCreateS = () => { setEditS(null); setSForm({ title: "", status: "scheduled", artists: [], cover: "" }); setSOpen(true); };
   const toggleArtist = (id: number) =>
     setSForm((f) => ({ ...f, artists: f.artists.includes(id) ? f.artists.filter((x) => x !== id) : [...f.artists, id] }));
 
@@ -108,6 +109,7 @@ export default function LiveMusicPage() {
       const payload: MusicLiveSessionWrite = {
         title: sForm.title.trim(), status: sForm.status,
         artists: sForm.artists.length ? sForm.artists : undefined,
+        cover: sForm.cover || undefined,
       };
       if (editS) { await liveMusicApi.sessions.update(editS, payload); toast.success("Session mise à jour"); }
       else { await liveMusicApi.sessions.create(payload); toast.success("Session créée"); }
@@ -320,6 +322,10 @@ export default function LiveMusicPage() {
               <Label>Titre *</Label>
               <Input value={sForm.title} onChange={(e) => setSForm({ ...sForm, title: e.target.value })} placeholder="Ex: Session acoustique" />
             </div>
+            <MediaUpload
+              label="Couverture" context="emission_cover" aspect="video"
+              value={sForm.cover || null} onChange={(url) => setSForm({ ...sForm, cover: url ?? "" })}
+            />
             <div className="space-y-1.5">
               <Label>Statut</Label>
               <Select value={sForm.status} onValueChange={(v) => setSForm({ ...sForm, status: v as MusicSessionStatus })}>

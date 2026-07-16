@@ -22,6 +22,29 @@ interface MediaUploadProps {
   aspect?: "video" | "square";
   label?: string;
   disabled?: boolean;
+  /** Pour audio/vidéo : reçoit la durée détectée du fichier, formatée "m:ss" ou "h:mm:ss". */
+  onDuration?: (formatted: string) => void;
+}
+
+/** Lit la durée (secondes) d'un fichier média côté navigateur. */
+function readMediaDuration(file: File, kind: "audio" | "video"): Promise<number | null> {
+  return new Promise((resolve) => {
+    const el = document.createElement(kind);
+    el.preload = "metadata";
+    const url = URL.createObjectURL(file);
+    const done = (val: number | null) => { URL.revokeObjectURL(url); resolve(val); };
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) ? el.duration : null);
+    el.onerror = () => done(null);
+    el.src = url;
+  });
+}
+
+/** Formate des secondes en "m:ss" (ou "h:mm:ss" si ≥ 1h). */
+function formatDuration(sec: number): string {
+  const t = Math.round(sec);
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 /**
@@ -30,7 +53,7 @@ interface MediaUploadProps {
  */
 export function MediaUpload({
   value, onChange, context, accept = "image/*",
-  variant = "image", aspect = "video", label, disabled,
+  variant = "image", aspect = "video", label, disabled, onDuration,
 }: MediaUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -46,6 +69,12 @@ export function MediaUpload({
     if (!file) return;
     setUploading(true);
     try {
+      // Détecte la durée (audio/vidéo) et pré-remplit le champ correspondant.
+      if (onDuration && (variant === "audio" || variant === "video")) {
+        readMediaDuration(file, variant).then((sec) => {
+          if (sec && sec > 0) onDuration(formatDuration(sec));
+        });
+      }
       const url = await uploadToCloudinary(file, context);
       onChange(url);
       toast.success("Fichier téléversé");

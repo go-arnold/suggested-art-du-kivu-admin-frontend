@@ -373,6 +373,7 @@ export default function WebTvPage() {
               label="Fichier vidéo (upload)" context="webtv_video" variant="video" accept="video/*"
               value={form.video_url && !form.video_url.includes(".m3u8") ? form.video_url : null}
               onChange={(url) => setField("video_url", url ?? "")}
+              onDuration={(d) => setField("duration", d)}
             />
             <div className="space-y-1.5">
               <Label htmlFor="wt-url">…ou coller une URL de vidéo *</Label>

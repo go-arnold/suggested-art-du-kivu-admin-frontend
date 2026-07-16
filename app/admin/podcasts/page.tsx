@@ -34,7 +34,7 @@ import { toast } from "sonner";
 
 const EMPTY_EP = {
   title: "", description: "", series: "",
-  audio_url: "", duration: "",
+  audio_url: "", duration: "", cover: "",
   episode_number: "", season_number: "",
   is_featured: false, published_at: "",
 };
@@ -157,6 +157,7 @@ export default function PodcastsPage() {
       series: seriesId,
       audio_url: ep.audio_url ?? "",
       duration: ep.duration ?? "",
+      cover: ep.cover_url ?? "",
       episode_number: ep.episode_number ? String(ep.episode_number) : "",
       season_number: ep.season_number ? String(ep.season_number) : "",
       is_featured: !!ep.is_featured,
@@ -176,6 +177,7 @@ export default function PodcastsPage() {
         series: Number(form.series),
         audio_url: form.audio_url.trim() || undefined,
         duration: form.duration.trim() || undefined,
+        cover: form.cover || undefined,
         episode_number: form.episode_number ? Number(form.episode_number) : undefined,
         season_number: form.season_number ? Number(form.season_number) : undefined,
         is_featured: form.is_featured,
@@ -282,12 +284,17 @@ export default function PodcastsPage() {
               <MediaUpload
                 label="Fichier audio (upload)" context="podcast_audio" variant="audio" accept="audio/*"
                 value={form.audio_url || null} onChange={(url) => setForm({ ...form, audio_url: url ?? "" })}
+                onDuration={(d) => setForm((f) => ({ ...f, duration: d }))}
               />
               <div className="grid gap-2">
                 <Label>…ou coller une URL audio</Label>
                 <Input type="url" placeholder="https://… .mp3" value={form.audio_url}
                   onChange={(e) => setForm({ ...form, audio_url: e.target.value })} />
               </div>
+              <MediaUpload
+                label="Miniature" context="podcast_cover" aspect="square"
+                value={form.cover || null} onChange={(url) => setForm({ ...form, cover: url ?? "" })}
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
                   <Label>Durée</Label>
