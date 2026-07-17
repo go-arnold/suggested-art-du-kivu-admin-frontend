@@ -25,8 +25,9 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  podcastsApi, commentsApi, type PodcastSeriesList, type EpisodeList, type EpisodeWrite,
-  type PodcastSeriesWrite,
+  podcastsApi, commentsApi, artistsApi,
+  type PodcastSeriesList, type EpisodeList, type EpisodeWrite,
+  type PodcastSeriesWrite, type ArtistList,
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
@@ -38,6 +39,7 @@ const EMPTY_EP = {
   audio_url: "", duration: "", cover: "",
   episode_number: "", season_number: "",
   is_featured: false, published_at: "",
+  guests: [] as number[], transcript: "",
 };
 
 /** ISO → valeur pour <input type="datetime-local"> (heure locale). */
@@ -80,6 +82,9 @@ export default function PodcastsPage() {
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [comments, setComments] = useState<EpisodeList | null>(null);
+  const [artists, setArtists] = useState<ArtistList[]>([]);
+  const toggleGuest = (id: number) =>
+    setForm((f) => ({ ...f, guests: f.guests.includes(id) ? f.guests.filter((x) => x !== id) : [...f.guests, id] }));
 
   // Création d'une série depuis le formulaire d'épisode
   const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
@@ -109,6 +114,9 @@ export default function PodcastsPage() {
     podcastsApi.categories()
       .then(setCategories)
       .catch(() => { /* catégories non bloquantes */ });
+    artistsApi.list("page_size=200&ordering=name")
+      .then((d) => setArtists(d.results))
+      .catch(() => { /* invités non bloquants */ });
   }, []);
 
   const handleCreateSeries = async () => {
@@ -180,12 +188,19 @@ export default function PodcastsPage() {
       season_number: ep.season_number ? String(ep.season_number) : "",
       is_featured: !!ep.is_featured,
       published_at: toLocalInput(ep.published_at),
+      guests: [], transcript: "",
     });
     setIsCreateDialogOpen(true);
+    // guests + transcript + audio_url ne sont que dans le détail → on complète.
+    podcastsApi.episodes.get(ep.slug).then((d) => {
+      const guestIds = (d.guests ?? []).map((g) => (typeof g === "number" ? g : g.id));
+      setForm((f) => ({ ...f, guests: guestIds, transcript: d.transcript ?? "", audio_url: d.audio_url ?? f.audio_url }));
+    }).catch(() => { /* on garde les valeurs de la liste */ });
   };
 
   const handleSubmitEpisode = async () => {
     if (!form.title || !form.series) { toast.error("Titre et série requis"); return; }
+    if (form.guests.length === 0) { toast.error("Au moins un invité est requis"); return; }
     setSubmitting(true);
     try {
       // Champs communs (création + édition)
@@ -199,6 +214,8 @@ export default function PodcastsPage() {
         episode_number: form.episode_number ? Number(form.episode_number) : undefined,
         season_number: form.season_number ? Number(form.season_number) : undefined,
         is_featured: form.is_featured,
+        guests: form.guests,
+        transcript: form.transcript.trim() || undefined,
       };
       if (editingSlug) {
         // PATCH partiel : published_at seulement si l'utilisateur l'a renseignée
@@ -336,6 +353,25 @@ export default function PodcastsPage() {
                   <Input type="number" min={0} placeholder="1" value={form.episode_number}
                     onChange={(e) => setForm({ ...form, episode_number: e.target.value })} />
                 </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Invité(s) *</Label>
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
+                  {artists.length === 0 && <p className="p-2 text-xs text-muted-foreground">Aucun artiste. Créez d&apos;abord des artistes.</p>}
+                  {artists.map((a) => (
+                    <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted">
+                      <input type="checkbox" checked={form.guests.includes(a.id)} onChange={() => toggleGuest(a.id)} />
+                      {a.name}
+                    </label>
+                  ))}
+                </div>
+                {form.guests.length > 0 && <p className="text-xs text-muted-foreground">{form.guests.length} invité(s) sélectionné(s)</p>}
+              </div>
+              <div className="grid gap-2">
+                <Label>Transcription (optionnelle)</Label>
+                <Textarea rows={3} value={form.transcript}
+                  onChange={(e) => setForm({ ...form, transcript: e.target.value })}
+                  placeholder="Transcription écrite de l'épisode…" />
               </div>
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>

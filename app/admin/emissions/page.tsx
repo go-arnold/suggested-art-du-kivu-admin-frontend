@@ -179,8 +179,18 @@ export default function EmissionsPage() {
         await emissionsApi.update(editingSlug, payload);
         toast.success("Émission mise à jour");
       } else {
-        await emissionsApi.create(payload);
+        const created = await emissionsApi.create(payload);
         toast.success("Émission enregistrée");
+        // Créée « En direct » → on lance la diffusion pour obtenir les liens RTMP.
+        if (form.status === "live") {
+          try {
+            const res = await emissionsApi.goLive(created.slug);
+            const creds = extractStreamCreds(res);
+            if (creds) setLiveCreds({ title: created.title, ...creds });
+            else toast.warning("Émission en direct, mais identifiants RTMP non renvoyés (voir la console).");
+            console.log("go_live response (emissions create):", res);
+          } catch { /* la création a réussi ; le go_live reste dispo via le menu */ }
+        }
       }
       setDialogOpen(false);
       setForm(EMPTY_FORM);
