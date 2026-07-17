@@ -12,6 +12,8 @@ interface HlsPlayerProps {
   className?: string;
   /** Message affiché si le flux ne démarre pas (ex. direct pas encore lancé). */
   emptyLabel?: string;
+  /** Démarrer en muet (autorise la lecture auto par le navigateur). */
+  muted?: boolean;
 }
 
 /**
@@ -20,7 +22,7 @@ interface HlsPlayerProps {
  * Affiche un message clair si le flux est indisponible plutôt que de tourner
  * indéfiniment (cas d'un direct sans diffusion active / enregistrement absent).
  */
-export function HlsPlayer({ src, poster, className, emptyLabel }: HlsPlayerProps) {
+export function HlsPlayer({ src, poster, className, emptyLabel, muted }: HlsPlayerProps) {
   const ref = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<"loading" | "playing" | "error">("loading");
   const [retry, setRetry] = useState(0);
@@ -58,6 +60,13 @@ export function HlsPlayer({ src, poster, className, emptyLabel }: HlsPlayerProps
       clearTimeout(timer);
       video.removeEventListener("playing", onPlaying);
       hls?.destroy();
+      // Stoppe COMPLÈTEMENT la balise vidéo, sinon l'audio continue après
+      // fermeture / se superpose à la réouverture (effet d'écho/répétition).
+      try {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      } catch { /* élément déjà démonté */ }
     };
   }, [src, retry]);
 
@@ -67,6 +76,7 @@ export function HlsPlayer({ src, poster, className, emptyLabel }: HlsPlayerProps
         ref={ref}
         controls
         autoPlay
+        muted={muted}
         playsInline
         poster={poster}
         className={cn("h-full w-full bg-black", className)}

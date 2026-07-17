@@ -19,6 +19,8 @@ import {
   DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -97,6 +99,10 @@ export default function UtilisateursPage() {
   const [dialogOpen,  setDialogOpen]  = useState(false);
   const [form,        setForm]        = useState<CreateForm>(EMPTY_FORM);
   const [creating,    setCreating]    = useState(false);
+  const [viewUser,    setViewUser]    = useState<User | null>(null);
+  const [editUser,    setEditUser]    = useState<User | null>(null);
+  const [editForm,    setEditForm]    = useState<{ username: string; handle: string; bio: string; is_online: boolean; role: User["role"]; is_active: boolean }>({ username: "", handle: "", bio: "", is_online: false, role: "viewer", is_active: true });
+  const [savingEdit,  setSavingEdit]  = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -153,15 +159,73 @@ export default function UtilisateursPage() {
     }
   };
 
-  // ── Toggle active ────────────────────────────────────────────────────────
-  const handleToggleActive = async (user: User) => {
-    try {
-      await usersApi.update(user.id, { is_active: !user.is_active });
-      toast.success(user.is_active ? "Compte désactivé" : "Compte réactivé");
-      fetchUsers();
-    } catch {
-      toast.error("Erreur lors de la mise à jour");
+  // ── Édition (PATCH /users/{id}/ : username, handle, bio, is_online) ────────
+  const openEdit = (user: User) => {
+    setEditForm({
+      username: user.username ?? "",
+      handle: user.handle ?? "",
+      bio: user.bio ?? "",
+      is_online: !!user.is_online,
+      role: user.role ?? "viewer",
+      is_active: user.is_active !== false,
+    });
+    setEditUser(user);
+  };
+
+  const handleUpdate = async () => {
+    if (!editUser) return;
+    if (!editForm.username.trim()) { toast.error("Le nom d'utilisateur est requis"); return; }
+    // N'envoie QUE les champs modifiés : évite que le validateur d'unicité du
+    // backend rejette un username inchangé (« déjà pris » par soi-même).
+    const payload: Partial<User> = {};
+    if (editForm.username.trim() !== editUser.username)       payload.username = editForm.username.trim();
+    if (editForm.handle.trim() !== (editUser.handle ?? ""))   payload.handle = editForm.handle.trim();
+    if (editForm.bio.trim() !== (editUser.bio ?? ""))         payload.bio = editForm.bio.trim();
+    if (editForm.is_online !== !!editUser.is_online)          payload.is_online = editForm.is_online;
+    if (editForm.role !== editUser.role)                      payload.role = editForm.role;
+    if (editForm.is_active !== (editUser.is_active !== false)) payload.is_active = editForm.is_active;
+
+    if (Object.keys(payload).length === 0) {
+      toast.info("Aucune modification");
+      setEditUser(null);
+      return;
     }
+    setSavingEdit(true);
+    try {
+      await usersApi.update(editUser.id, payload);
+      // Vérifie que le backend a bien appliqué rôle/activation (sinon ce sont
+      // des champs en lecture seule côté serializer -> on prévient honnêtement).
+      const roleChanged = editForm.role !== editUser.role;
+      const activeChanged = editForm.is_active !== (editUser.is_active !== false);
+      if (roleChanged || activeChanged) {
+        try {
+          const fresh = await usersApi.get(editUser.id);
+          const roleOk = !roleChanged || fresh.role === editForm.role;
+          const activeOk = !activeChanged || fresh.is_active === undefined || fresh.is_active === editForm.is_active;
+          if (!roleOk || !activeOk) {
+            toast.error("Rôle/activation non modifiables.");
+          } else {
+            toast.success("Utilisateur mis à jour");
+          }
+        } catch {
+          toast.success("Utilisateur mis à jour");
+        }
+      } else {
+        toast.success("Utilisateur mis à jour");
+      }
+      setEditUser(null);
+      fetchUsers();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la mise à jour");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // ── Envoyer un email ───────────────────────────────────────────────────────
+  const handleEmail = (user: User) => {
+    if (!user.email) { toast.error("Aucune adresse email"); return; }
+    window.location.href = `mailto:${user.email}`;
   };
 
   // ── Suppression (via l'action groupée : pas de DELETE /users/{id}/) ────────
@@ -417,24 +481,16 @@ export default function UtilisateursPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setViewUser(user)}>
                             <Eye className="mr-2 h-4 w-4" />Voir le profil
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEdit(user)}>
                             <Edit className="mr-2 h-4 w-4" />Modifier
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEmail(user)}>
                             <Mail className="mr-2 h-4 w-4" />Envoyer un email
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className={user.is_active ? "text-destructive" : "text-emerald-600"}
-                            onClick={() => handleToggleActive(user)}
-                          >
-                            {user.is_active
-                              ? <><Ban className="mr-2 h-4 w-4" />Désactiver</>
-                              : <><CheckCircle className="mr-2 h-4 w-4" />Réactiver</>}
-                          </DropdownMenuItem>
                           <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(user)}>
                             <Trash2 className="mr-2 h-4 w-4" />Supprimer
                           </DropdownMenuItem>
@@ -448,6 +504,102 @@ export default function UtilisateursPage() {
           </Table>
         )}
       </Card>
+
+      {/* Voir le profil */}
+      <Dialog open={!!viewUser} onOpenChange={(o) => !o && setViewUser(null)}>
+        <DialogContent className="sm:max-w-[440px]">
+          {viewUser && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Profil utilisateur</DialogTitle>
+                <DialogDescription>Informations du compte.</DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-3 py-2">
+                <Avatar className="h-14 w-14">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-lg">
+                    {(viewUser.username || viewUser.email || "?").slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{viewUser.username || "—"}</p>
+                  <p className="truncate text-sm text-muted-foreground">{viewUser.email}</p>
+                  <div className="mt-1">{getRoleBadge(viewUser.role)}</div>
+                </div>
+              </div>
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <div><dt className="text-muted-foreground">Handle</dt><dd className="font-medium">{viewUser.handle || "—"}</dd></div>
+                <div><dt className="text-muted-foreground">Statut</dt><dd className="font-medium">{viewUser.is_online ? "En ligne" : "Hors ligne"}</dd></div>
+                <div><dt className="text-muted-foreground">Vérifié</dt><dd className="font-medium">{viewUser.is_verified ? "Oui" : "Non"}</dd></div>
+                <div><dt className="text-muted-foreground">Écoutes</dt><dd className="font-medium">{viewUser.listen_count ?? 0}</dd></div>
+                {viewUser.created_at && (
+                  <div className="col-span-2"><dt className="text-muted-foreground">Inscrit le</dt><dd className="font-medium">{new Date(viewUser.created_at).toLocaleDateString("fr-FR")}</dd></div>
+                )}
+                {viewUser.bio && (
+                  <div className="col-span-2"><dt className="text-muted-foreground">Bio</dt><dd className="whitespace-pre-wrap">{viewUser.bio}</dd></div>
+                )}
+              </dl>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => handleEmail(viewUser)}><Mail className="mr-2 h-4 w-4" />Email</Button>
+                <Button onClick={() => { const u = viewUser; setViewUser(null); openEdit(u); }}><Edit className="mr-2 h-4 w-4" />Modifier</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modifier */}
+      <Dialog open={!!editUser} onOpenChange={(o) => { if (!savingEdit && !o) setEditUser(null); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Modifier l&apos;utilisateur</DialogTitle>
+            <DialogDescription>Réservé aux administrateurs.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>Nom d&apos;utilisateur *</Label>
+              <Input value={editForm.username} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Rôle</Label>
+                <Select value={editForm.role} onValueChange={(v) => setEditForm({ ...editForm, role: v as User["role"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Administrateur</SelectItem>
+                    <SelectItem value="editor">Éditeur</SelectItem>
+                    <SelectItem value="moderator">Modérateur</SelectItem>
+                    <SelectItem value="viewer">Lecteur</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Handle</Label>
+                <Input value={editForm.handle} onChange={(e) => setEditForm({ ...editForm, handle: e.target.value })} placeholder="@pseudo" />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Bio</Label>
+              <Textarea rows={3} value={editForm.bio} onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <Label className="cursor-pointer">Compte actif</Label>
+                <Switch checked={editForm.is_active} onCheckedChange={(v) => setEditForm({ ...editForm, is_active: v })} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <Label className="cursor-pointer">En ligne</Label>
+                <Switch checked={editForm.is_online} onCheckedChange={(v) => setEditForm({ ...editForm, is_online: v })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={savingEdit} onClick={() => setEditUser(null)}>Annuler</Button>
+            <Button disabled={savingEdit} onClick={handleUpdate}>
+              {savingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

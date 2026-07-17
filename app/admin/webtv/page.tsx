@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Tv, Search, Filter, MoreHorizontal, Eye, Play, Radio, Pause, Share2,
-  Trash2, Loader2, Video, Copy, Star, Plus, MessageSquare, MessagesSquare,
+  Trash2, Loader2, Video, Copy, Star, Plus, MessageSquare, MessagesSquare, Edit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,7 @@ import {
 import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, commentToMod, chatToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
-import { videosApi, commentsApi, chatApi, type VideoListItem, type VideoDetail, type VideoWrite } from "@/lib/api";
+import { videosApi, commentsApi, chatApi, extractStreamCreds, type VideoListItem, type VideoDetail, type VideoWrite } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -41,6 +41,12 @@ const CATEGORY_COLORS: Record<string, string> = {
   premiers: "bg-pink-100 text-pink-700",
 };
 
+// Placeholder envoyé pour une entrée « direct caméra » : le backend exige un
+// video_url ET vérifie qu'il est joignable. On utilise une petite vidéo publique
+// (Cloudinary demo) — elle n'est jamais affichée (le player détecte ce placeholder
+// et montre « Direct caméra »), la lecture réelle se fait via le flux caméra.
+const CAMERA_PLACEHOLDER = "https://res.cloudinary.com/demo/video/upload/dog.mp4";
+
 export default function WebTvPage() {
   const [videos,     setVideos]     = useState<VideoListItem[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -50,8 +56,28 @@ export default function WebTvPage() {
   const [liveCreds,  setLiveCreds]  = useState<{ title: string; url: string; key: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [saving,     setSaving]     = useState(false);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  // Mode de création : "file" = fichier vidéo uploadé ; "camera" = direct caméra (OBS).
+  const [mode,       setMode]       = useState<"file" | "camera">("file");
   const [comments,   setComments]   = useState<VideoListItem | null>(null);
   const [chatFor,    setChatFor]    = useState<VideoListItem | null>(null);
+  // Slugs diffusés en mode « vidéo uploadée » (playout) — le backend ne distingue
+  // pas ce mode du direct caméra, on le mémorise donc localement.
+  const [playoutSlugs, setPlayoutSlugs] = useState<Set<string>>(new Set());
+  // Slugs créés en mode « direct caméra » (type permanent, pas de fichier vidéo).
+  const [cameraSlugs, setCameraSlugs] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try { setPlayoutSlugs(new Set(JSON.parse(localStorage.getItem("webtv_playout") || "[]"))); } catch { /* ignore */ }
+    try { setCameraSlugs(new Set(JSON.parse(localStorage.getItem("webtv_camera") || "[]"))); } catch { /* ignore */ }
+  }, []);
+  const savePlayout = (next: Set<string>) => {
+    setPlayoutSlugs(next);
+    try { localStorage.setItem("webtv_playout", JSON.stringify([...next])); } catch { /* ignore */ }
+  };
+  const saveCamera = (next: Set<string>) => {
+    setCameraSlugs(next);
+    try { localStorage.setItem("webtv_camera", JSON.stringify([...next])); } catch { /* ignore */ }
+  };
 
   const emptyForm = {
     title: "", category: "freestyles", video_url: "", description: "",
@@ -80,6 +106,22 @@ export default function WebTvPage() {
 
   useEffect(() => { fetchVideos(); }, [fetchVideos]);
 
+  // Pendant qu'on regarde un direct, on ré-interroge le détail toutes les 8 s
+  // jusqu'à ce que le flux caméra (playback_hls_url) apparaisse — MediaMTX met
+  // ~15 s à détecter OBS après go_live.
+  useEffect(() => {
+    if (!watch?.item.is_live || watch.detail?.playback_hls_url) return;
+    const slug = watch.item.slug;
+    if (playoutSlugs.has(slug)) return; // playout : pas de flux caméra à attendre
+    const id = setInterval(async () => {
+      try {
+        const d = await videosApi.get(slug);
+        setWatch((w) => (w && w.item.slug === slug ? { ...w, detail: d } : w));
+      } catch { /* on retentera au prochain tick */ }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [watch?.item.slug, watch?.item.is_live, watch?.detail?.playback_hls_url, playoutSlugs]);
+
   const copy = (v: string) => { navigator.clipboard.writeText(v); toast.success("Copié"); };
 
   const handleWatch = async (item: VideoListItem) => {
@@ -92,12 +134,78 @@ export default function WebTvPage() {
     }
   };
 
-  const handleGoLive = async (item: VideoListItem) => {
+  const openCreate = () => { setEditingSlug(null); setForm(emptyForm); setMode("file"); setCreateOpen(true); };
+
+  const openEdit = async (item: VideoListItem) => {
+    try {
+      const d = await videosApi.get(item.slug);
+      const isCamera = d.video_url === CAMERA_PLACEHOLDER || cameraSlugs.has(item.slug);
+      setEditingSlug(item.slug);
+      setMode(isCamera ? "camera" : "file");
+      setForm({
+        title: d.title ?? "",
+        category: d.category ?? "freestyles",
+        video_url: isCamera ? "" : (d.video_url ?? ""),
+        description: d.description ?? "",
+        duration: d.duration ?? "",
+        location: d.location ?? "",
+        is_premier: !!d.is_premier,
+        published_at: d.published_at ? new Date(d.published_at).toISOString().slice(0, 16) : "",
+        thumbnail: d.thumbnail_url ?? "",
+      });
+      setCreateOpen(true);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Impossible de charger la vidéo");
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingSlug) return;
+    const isCamera = mode === "camera";
+    if (!form.title.trim())     { toast.error("Le titre est obligatoire"); return; }
+    if (!isCamera && !form.video_url.trim()) { toast.error("La vidéo est obligatoire (upload ou URL)"); return; }
+    setSaving(true);
+    try {
+      await videosApi.update(editingSlug, {
+        title: form.title.trim(),
+        category: form.category,
+        video_url: isCamera ? CAMERA_PLACEHOLDER : form.video_url.trim(),
+        description: form.description.trim() || undefined,
+        duration: form.duration.trim() || undefined,
+        location: form.location.trim() || undefined,
+        is_premier: form.is_premier,
+        thumbnail: form.thumbnail || undefined,
+        published_at: form.published_at ? new Date(form.published_at).toISOString() : undefined,
+      });
+      const c = new Set(cameraSlugs);
+      if (isCamera) c.add(editingSlug); else c.delete(editingSlug);
+      saveCamera(c);
+      toast.success("Vidéo mise à jour");
+      setCreateOpen(false); setForm(emptyForm); setMode("file"); setEditingSlug(null);
+      fetchVideos();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la mise à jour");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // camera=true : diffusion caméra via OBS (on affiche les identifiants RTMP).
+  // camera=false : diffuser la vidéo uploadée en direct (aucun OBS nécessaire).
+  const handleGoLive = async (item: VideoListItem, camera: boolean) => {
     try {
       const res = await videosApi.goLive(item.slug);
-      toast.success("Direct démarré");
-      if (res?.cf_rtmps_url && res?.cf_rtmps_key) {
-        setLiveCreds({ title: item.title, url: res.cf_rtmps_url, key: res.cf_rtmps_key });
+      const next = new Set(playoutSlugs);
+      if (camera) {
+        next.delete(item.slug); savePlayout(next);
+        const creds = extractStreamCreds(res);
+        if (creds) setLiveCreds({ title: item.title, ...creds });
+        else toast.warning("Direct démarré, mais les identifiants RTMP n'ont pas été renvoyés (voir la console).");
+        console.log("go_live response (webtv):", res);
+        toast.success("Direct caméra démarré — configure OBS");
+      } else {
+        next.add(item.slug); savePlayout(next);
+        toast.success("Vidéo diffusée en direct");
       }
       fetchVideos();
     } catch (err: unknown) {
@@ -108,6 +216,7 @@ export default function WebTvPage() {
   const handleEndLive = async (slug: string) => {
     try {
       await videosApi.endLive(slug);
+      const next = new Set(playoutSlugs); next.delete(slug); savePlayout(next);
       toast.success("Direct arrêté");
       fetchVideos();
     } catch (err: unknown) {
@@ -118,7 +227,7 @@ export default function WebTvPage() {
   const handleShare = async (item: VideoListItem) => {
     try {
       const d = await videosApi.get(item.slug);
-      const link = (d.is_live ? d.cf_playback_hls_url : d.video_url) || d.video_url || "";
+      const link = (d.is_live ? d.playback_hls_url : d.video_url) || d.video_url || "";
       if (!link) { toast.error("Aucun lien de lecture"); return; }
       await navigator.clipboard.writeText(link);
       toast.success("Lien copié");
@@ -140,14 +249,16 @@ export default function WebTvPage() {
   };
 
   const handleCreate = async (thenGoLive: boolean) => {
+    const isCamera = mode === "camera";
     if (!form.title.trim())     { toast.error("Le titre est obligatoire"); return; }
-    if (!form.video_url.trim()) { toast.error("L'URL de la vidéo est obligatoire"); return; }
+    if (!isCamera && !form.video_url.trim()) { toast.error("La vidéo est obligatoire (upload ou URL)"); return; }
     setSaving(true);
     try {
       const payload: VideoWrite = {
         title: form.title.trim(),
         category: form.category,
-        video_url: form.video_url.trim(),
+        // Direct caméra : pas de fichier → placeholder (le backend exige video_url).
+        video_url: isCamera ? CAMERA_PLACEHOLDER : form.video_url.trim(),
         published_at: form.published_at
           ? new Date(form.published_at).toISOString()
           : new Date().toISOString(),
@@ -158,15 +269,24 @@ export default function WebTvPage() {
         thumbnail: form.thumbnail || undefined,
       };
       const created = await videosApi.create(payload);
+      if (isCamera) { const c = new Set(cameraSlugs); c.add(created.slug); saveCamera(c); }
       toast.success("Vidéo créée");
       setCreateOpen(false);
       setForm(emptyForm);
+      setMode("file");
 
       if (thenGoLive) {
         const res = await videosApi.goLive(created.slug);
-        toast.success("Direct démarré");
-        if (res?.cf_rtmps_url && res?.cf_rtmps_key) {
-          setLiveCreds({ title: created.title, url: res.cf_rtmps_url, key: res.cf_rtmps_key });
+        const next = new Set(playoutSlugs);
+        if (isCamera) {
+          next.delete(created.slug); savePlayout(next);
+          const creds = extractStreamCreds(res);
+          if (creds) setLiveCreds({ title: created.title, ...creds });
+          else toast.warning("Direct démarré, mais les identifiants RTMP n'ont pas été renvoyés (voir la console).");
+          toast.success("Direct caméra démarré — configure OBS");
+        } else {
+          next.add(created.slug); savePlayout(next);
+          toast.success("Vidéo diffusée en direct");
         }
       }
       fetchVideos();
@@ -189,7 +309,7 @@ export default function WebTvPage() {
           <h1 className="font-display text-3xl font-bold text-foreground">Web TV</h1>
           <p className="mt-1 text-muted-foreground">Catalogue vidéo et diffusions en direct</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2">
+        <Button onClick={openCreate} className="gap-2">
           <Plus className="h-4 w-4" />Nouvelle vidéo
         </Button>
       </div>
@@ -270,9 +390,12 @@ export default function WebTvPage() {
                       <DropdownMenuItem onClick={() => handleWatch(v)}><Eye className="mr-2 h-4 w-4" />Regarder</DropdownMenuItem>
                       {v.is_live ? (
                         <DropdownMenuItem onClick={() => handleEndLive(v.slug)}><Pause className="mr-2 h-4 w-4" />Arrêter le direct</DropdownMenuItem>
+                      ) : cameraSlugs.has(v.slug) ? (
+                        <DropdownMenuItem onClick={() => handleGoLive(v, true)}><Radio className="mr-2 h-4 w-4" />Passer en direct (caméra)</DropdownMenuItem>
                       ) : (
-                        <DropdownMenuItem onClick={() => handleGoLive(v)}><Radio className="mr-2 h-4 w-4" />Passer en direct</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleGoLive(v, false)}><Play className="mr-2 h-4 w-4" />Diffuser la vidéo en direct</DropdownMenuItem>
                       )}
+                      <DropdownMenuItem onClick={() => openEdit(v)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleShare(v)}><Share2 className="mr-2 h-4 w-4" />Partager</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setComments(v)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
                       {v.is_live && <DropdownMenuItem onClick={() => setChatFor(v)}><MessagesSquare className="mr-2 h-4 w-4" />Chat du direct</DropdownMenuItem>}
@@ -312,15 +435,21 @@ export default function WebTvPage() {
                 {!watch.detail ? (
                   <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
                 ) : (() => {
-                  const live = watch.detail.is_live && watch.detail.cf_playback_hls_url;
-                  const src = live ? watch.detail.cf_playback_hls_url! : (watch.detail.video_url ?? "");
-                  if (!src) return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Aucune source vidéo.</div>;
-                  if (live || src.includes(".m3u8")) {
+                  // Mode playout (vidéo uploadée en direct) → on joue video_url, pas le HLS.
+                  const playout = playoutSlugs.has(watch.item.slug);
+                  const camera = !playout && watch.detail.is_live && watch.detail.playback_hls_url;
+                  const src = camera ? watch.detail.playback_hls_url! : (watch.detail.video_url ?? "");
+                  if (!src || src === CAMERA_PLACEHOLDER) return <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground"><Radio className="h-8 w-8 text-muted-foreground/40" />Direct caméra — pas encore démarré.<span className="text-xs">Utilise « Passer en direct (caméra) ».</span></div>;
+                  if (camera || src.includes(".m3u8")) {
                     return <HlsPlayer src={src} poster={watch.detail.thumbnail_url ?? undefined}
-                      emptyLabel={live ? "Le direct n'a pas encore démarré." : "Vidéo indisponible."} />;
+                      muted={watch.item.is_live}
+                      emptyLabel={camera ? "Le direct n'a pas encore démarré." : "Vidéo indisponible."} />;
                   }
-                  // VOD fichier direct (mp4…)
-                  return <video src={src} poster={watch.detail.thumbnail_url ?? undefined} controls autoPlay playsInline className="h-full w-full bg-black" />;
+                  // Vidéo uploadée diffusée en direct → démarre en muet (autoplay) ;
+                  // VOD normale → lecture avec son sur action de l'utilisateur.
+                  return <video src={src} poster={watch.detail.thumbnail_url ?? undefined}
+                    controls autoPlay muted={watch.item.is_live} playsInline
+                    className="h-full w-full bg-black" />;
                 })()}
               </div>
               <DialogFooter>
@@ -333,15 +462,25 @@ export default function WebTvPage() {
       </Dialog>
 
       {/* Création d'une vidéo */}
-      <Dialog open={createOpen} onOpenChange={(o) => { if (!saving) { setCreateOpen(o); if (!o) setForm(emptyForm); } }}>
+      <Dialog open={createOpen} onOpenChange={(o) => { if (!saving) { setCreateOpen(o); if (!o) { setForm(emptyForm); setMode("file"); setEditingSlug(null); } } }}>
         <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Nouvelle vidéo</DialogTitle>
+            <DialogTitle>{editingSlug ? "Modifier la vidéo" : "Nouvelle vidéo"}</DialogTitle>
             <DialogDescription>
-              Ajoutez une vidéo au catalogue. Vous pouvez la publier telle quelle ou la lancer directement en direct.
+              Choisis le type : une <strong>vidéo fichier</strong> (upload/URL) ou un <strong>direct caméra</strong> (OBS, sans fichier).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
+            <div className="grid grid-cols-2 gap-2 rounded-lg border p-1">
+              <Button type="button" size="sm" className="gap-2"
+                variant={mode === "file" ? "default" : "ghost"} onClick={() => setMode("file")}>
+                <Video className="h-4 w-4" />Fichier vidéo
+              </Button>
+              <Button type="button" size="sm" className="gap-2"
+                variant={mode === "camera" ? "default" : "ghost"} onClick={() => setMode("camera")}>
+                <Radio className="h-4 w-4" />Direct caméra
+              </Button>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="wt-title">Titre *</Label>
               <Input id="wt-title" value={form.title} onChange={(e) => setField("title", e.target.value)}
@@ -369,19 +508,27 @@ export default function WebTvPage() {
                 onChange={(e) => setField("published_at", e.target.value)} />
               <p className="text-xs text-muted-foreground">Laissez vide pour publier maintenant.</p>
             </div>
-            <MediaUpload
-              label="Fichier vidéo (upload)" context="webtv_video" variant="video" accept="video/*"
-              value={form.video_url && !form.video_url.includes(".m3u8") ? form.video_url : null}
-              onChange={(url) => setField("video_url", url ?? "")}
-            />
-            <div className="space-y-1.5">
-              <Label htmlFor="wt-url">…ou coller une URL de vidéo *</Label>
-              <Input id="wt-url" value={form.video_url} onChange={(e) => setField("video_url", e.target.value)}
-                placeholder="https://… (fichier .mp4 ou lien .m3u8)" />
-              <p className="text-xs text-muted-foreground">
-                Lien de lecture / rediffusion. Pour un direct, indiquez le lien de rediffusion prévu.
+            {mode === "file" ? (
+              <>
+                <MediaUpload
+                  label="Fichier vidéo (upload)" context="webtv_video" variant="video" accept="video/*"
+                  value={form.video_url && !form.video_url.includes(".m3u8") ? form.video_url : null}
+                  onChange={(url) => setField("video_url", url ?? "")}
+                  onDuration={(d) => setField("duration", d)}
+                />
+                <div className="space-y-1.5">
+                  <Label htmlFor="wt-url">…ou coller une URL de vidéo *</Label>
+                  <Input id="wt-url" value={form.video_url} onChange={(e) => setField("video_url", e.target.value)}
+                    placeholder="https://… (fichier .mp4 ou lien .m3u8)" />
+                </div>
+              </>
+            ) : (
+              <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                <Radio className="mr-1 inline h-4 w-4 text-primary" />
+                Direct caméra : aucun fichier à fournir. Après création, utilise « Passer en direct (caméra) »
+                pour obtenir les identifiants OBS.
               </p>
-            </div>
+            )}
             <MediaUpload
               label="Miniature" context="webtv_thumbnail" aspect="video"
               value={form.thumbnail || null} onChange={(url) => setField("thumbnail", url ?? "")}
@@ -406,13 +553,21 @@ export default function WebTvPage() {
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" disabled={saving} onClick={() => handleCreate(false)}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Créer
-            </Button>
-            <Button disabled={saving} onClick={() => handleCreate(true)} className="gap-2">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-              Créer et passer en direct
-            </Button>
+            {editingSlug ? (
+              <Button disabled={saving} onClick={handleUpdate}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enregistrer
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" disabled={saving} onClick={() => handleCreate(false)}>
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Créer
+                </Button>
+                <Button disabled={saving} onClick={() => handleCreate(true)} className="gap-2">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
+                  {mode === "camera" ? "Créer et passer en direct (caméra)" : "Créer et diffuser en direct"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -430,7 +585,7 @@ export default function WebTvPage() {
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="space-y-1">
-                  <Label>Serveur (RTMPS)</Label>
+                  <Label>Serveur (RTMP)</Label>
                   <div className="flex gap-2">
                     <Input readOnly value={liveCreds.url} className="font-mono text-xs" />
                     <Button variant="outline" size="icon" onClick={() => copy(liveCreds.url)}><Copy className="h-4 w-4" /></Button>

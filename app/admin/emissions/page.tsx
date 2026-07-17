@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Radio, Calendar, Clock, Eye, MoreHorizontal, Plus, Search, Filter,
   Wifi, WifiOff, Video, Loader2, Play, Pause, Edit, Share2, Headphones, Copy,
-  MessageSquare,
+  MessageSquare, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { emissionsApi, commentsApi, type EmissionList, type EmissionWrite, type EmissionDetail, type EmissionStatus } from "@/lib/api";
+import { emissionsApi, commentsApi, extractStreamCreds, type EmissionList, type EmissionWrite, type EmissionDetail, type EmissionStatus } from "@/lib/api";
 import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
@@ -107,6 +107,20 @@ export default function EmissionsPage() {
 
   useEffect(() => { fetchShows(); }, [fetchShows]);
 
+  // Pendant qu'on regarde un direct, ré-interroge le détail toutes les 8 s
+  // jusqu'à ce que le flux (playback_hls_url) apparaisse (délai MediaMTX ~15 s).
+  useEffect(() => {
+    if (watch?.show.status !== "live" || watch.detail?.playback_hls_url) return;
+    const slug = watch.show.slug;
+    const id = setInterval(async () => {
+      try {
+        const d = await emissionsApi.get(slug);
+        setWatch((w) => (w && w.show.slug === slug ? { ...w, detail: d } : w));
+      } catch { /* retentera */ }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [watch?.show.slug, watch?.show.status, watch?.detail?.playback_hls_url]);
+
   const openCreate = () => {
     setEditingSlug(null);
     setForm(EMPTY_FORM);
@@ -184,11 +198,11 @@ export default function EmissionsPage() {
     try {
       const res = await emissionsApi.goLive(show.slug);
       toast.success("Émission démarrée — en direct");
-      // Les identifiants RTMPS ne sont renvoyés qu'ici : on les affiche une fois
-      // à l'opérateur pour la configuration OBS (jamais persistés).
-      if (res?.cf_rtmps_url && res?.cf_rtmps_key) {
-        setLiveCreds({ title: show.title, url: res.cf_rtmps_url, key: res.cf_rtmps_key });
-      }
+      const creds = extractStreamCreds(res);
+      if (creds) setLiveCreds({ title: show.title, ...creds });
+      else toast.warning("Direct démarré, mais le backend n'a pas renvoyé les identifiants RTMPS (voir la console / la réponse go_live).");
+      // Diagnostic : trace la réponse pour identifier les champs si besoin.
+      console.log("go_live response (emissions):", res);
       fetchShows();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur au démarrage de la diffusion");
@@ -223,7 +237,7 @@ export default function EmissionsPage() {
   const handleShare = async (show: EmissionList) => {
     try {
       const detail = await emissionsApi.get(show.slug);
-      const link = detail.cf_playback_hls_url || detail.stream_url || "";
+      const link = detail.playback_hls_url || detail.stream_url || "";
       if (!link) { toast.error("Aucun lien de lecture disponible"); return; }
       await navigator.clipboard.writeText(link);
       toast.success("Lien copié dans le presse-papier");
@@ -376,122 +390,71 @@ export default function EmissionsPage() {
       )}
 
       {/* Shows grid */}
-      {!loading && (
-        <div className="grid gap-4 lg:grid-cols-2">
+      {!loading && shows.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {shows.map((show) => (
-            <Card key={show.id} className="card-shadow overflow-hidden">
-              <div className="flex">
-                {/* Thumbnail */}
-                <div className="relative h-32 w-32 shrink-0 bg-muted">
-                  <img src={show.cover_url || "/placeholder.svg"} alt={show.title}
-                    loading="lazy" decoding="async"
-                    className="h-full w-full object-cover" />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <Video className="h-8 w-8 text-white" />
-                  </div>
-                  {show.status === "live" && (
-                    <div className="absolute left-2 top-2">
-                      <span className="flex h-3 w-3">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                        <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-                      </span>
-                    </div>
-                  )}
+            <div key={show.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
+              <div className="relative aspect-video bg-muted">
+                {show.cover_url ? (
+                  <img src={show.cover_url} alt={show.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center"><Video className="h-10 w-10 text-muted-foreground/30" /></div>
+                )}
+                {show.status === "live" && (
+                  <Badge className="absolute left-2 top-2 gap-1 bg-red-500 text-white">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE
+                  </Badge>
+                )}
+                {(show.status === "live" || show.status === "recorded") && (
+                  <button onClick={() => handleWatch(show)}
+                    className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+                    <Play className="h-10 w-10 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                  </button>
+                )}
+              </div>
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="truncate text-sm font-medium" title={show.title}>{show.title}</p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {show.status === "scheduled" && (
+                        <DropdownMenuItem onClick={() => handleGoLive(show)}><Play className="mr-2 h-4 w-4" />Démarrer maintenant</DropdownMenuItem>
+                      )}
+                      {show.status === "live" && (
+                        <DropdownMenuItem onClick={() => handleEndLive(show.slug)}><Pause className="mr-2 h-4 w-4" />Arrêter la diffusion</DropdownMenuItem>
+                      )}
+                      {show.status === "live" && (
+                        <DropdownMenuItem onClick={() => handleWatch(show)}><Eye className="mr-2 h-4 w-4" />Regarder le direct</DropdownMenuItem>
+                      )}
+                      {show.status === "recorded" && (
+                        <DropdownMenuItem onClick={() => handleGoLive(show)}><Radio className="mr-2 h-4 w-4" />Rediffuser en direct</DropdownMenuItem>
+                      )}
+                      {show.status === "recorded" && (
+                        <DropdownMenuItem onClick={() => handleWatch(show)}><Headphones className="mr-2 h-4 w-4" />Voir la rediffusion</DropdownMenuItem>
+                      )}
+                      {(show.status === "live" || show.status === "recorded") && (
+                        <DropdownMenuItem onClick={() => handleShare(show)}><Share2 className="mr-2 h-4 w-4" />Partager le lien</DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => setComments(show)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openEdit(show)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(show.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-
-                {/* Content */}
-                <div className="flex flex-1 flex-col p-4 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="mb-1">{getStatusBadge(show.status)}</div>
-                      <h3 className="font-semibold text-foreground line-clamp-1">{show.title}</h3>
-                      {show.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-1">{show.description}</p>
-                      )}
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {show.status === "scheduled" && (
-                          <DropdownMenuItem onClick={() => handleGoLive(show)}>
-                            <Play className="mr-2 h-4 w-4" />Démarrer maintenant
-                          </DropdownMenuItem>
-                        )}
-                        {show.status === "live" && (
-                          <DropdownMenuItem onClick={() => handleEndLive(show.slug)}>
-                            <Pause className="mr-2 h-4 w-4" />Arrêter la diffusion
-                          </DropdownMenuItem>
-                        )}
-                        {show.status === "live" && (
-                          <DropdownMenuItem onClick={() => handleWatch(show)}>
-                            <Eye className="mr-2 h-4 w-4" />Regarder le direct
-                          </DropdownMenuItem>
-                        )}
-                        {show.status === "recorded" && (
-                          <DropdownMenuItem onClick={() => handleGoLive(show)}>
-                            <Radio className="mr-2 h-4 w-4" />Rediffuser en direct
-                          </DropdownMenuItem>
-                        )}
-                        {show.status === "recorded" && (
-                          <DropdownMenuItem onClick={() => handleWatch(show)}>
-                            <Headphones className="mr-2 h-4 w-4" />Voir la rediffusion
-                          </DropdownMenuItem>
-                        )}
-                        {(show.status === "live" || show.status === "recorded") && (
-                          <DropdownMenuItem onClick={() => handleShare(show)}>
-                            <Share2 className="mr-2 h-4 w-4" />Partager le lien
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => setComments(show)}>
-                          <MessageSquare className="mr-2 h-4 w-4" />Commentaires
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEdit(show)}>
-                          <Edit className="mr-2 h-4 w-4" />Modifier
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(show.slug)}>
-                          Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Meta */}
-                  <div className="mt-auto flex items-center justify-between pt-2 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-3">
-                      {show.scheduled_at && (
-                        <>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(show.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(show.scheduled_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </>
-                      )}
-                      <span>{formatDuration(show.duration_minutes)}</span>
-                    </div>
-                    <span className="flex items-center gap-1">
-                      <Eye className="h-3 w-3" />
-                      {(show.total_views ?? 0).toLocaleString()}
-                    </span>
-                  </div>
-
-                  {/* Hosts */}
-                  {show.host_names && show.host_names.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {show.host_names.join(", ")}
-                    </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  {getStatusBadge(show.status)}
+                  {show.scheduled_at && (
+                    <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />
+                      {new Date(show.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
                   )}
+                  <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{(show.total_views ?? 0).toLocaleString()}</span>
                 </div>
               </div>
-            </Card>
+            </div>
           ))}
         </div>
       )}
@@ -537,10 +500,11 @@ export default function EmissionsPage() {
                   <div className="flex h-full items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : watch.detail.cf_playback_hls_url ? (
+                ) : watch.detail.playback_hls_url ? (
                   <HlsPlayer
-                    src={watch.detail.cf_playback_hls_url}
+                    src={watch.detail.playback_hls_url}
                     poster={watch.detail.cover_url ?? undefined}
+                    muted={watch.show.status === "live"}
                     emptyLabel={watch.show.status === "live"
                       ? "Le direct n'a pas encore démarré (aucune diffusion active)."
                       : "Enregistrement indisponible pour cette émission."}
@@ -580,7 +544,7 @@ export default function EmissionsPage() {
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="space-y-1">
-                  <Label>Serveur (RTMPS)</Label>
+                  <Label>Serveur (RTMP)</Label>
                   <div className="flex gap-2">
                     <Input readOnly value={liveCreds.url} className="font-mono text-xs" />
                     <Button variant="outline" size="icon" onClick={() => copy(liveCreds.url)}>
