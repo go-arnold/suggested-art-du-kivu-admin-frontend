@@ -124,8 +124,17 @@ export default function RadioPage() {
         await radioApi.update(editingId, payload);
         toast.success("Programme mis à jour");
       } else {
-        await radioApi.create(payload);
+        const created = await radioApi.create(payload);
         toast.success("Programme créé");
+        // Créé « En direct » → lance le passage à l'antenne pour obtenir les liens RTMP.
+        if (form.status === "live") {
+          try {
+            const res = await radioApi.goLive(created.id);
+            const creds = extractStreamCreds(res);
+            if (creds) setLiveCreds({ title: created.title, ...creds });
+            else toast.warning("Antenne démarrée, mais identifiants RTMP non renvoyés (voir la console).");
+          } catch { /* création OK ; go_live dispo via le menu */ }
+        }
       }
       setOpen(false); setForm(EMPTY); setEditingId(null);
       fetch();

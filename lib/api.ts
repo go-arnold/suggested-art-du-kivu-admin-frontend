@@ -678,6 +678,8 @@ export interface EpisodeList {
     title: string;
     slug: string;
   };
+  guests?: (number | { id: number; name?: string })[]; // détail uniquement
+  transcript?: string;     // détail uniquement
 }
 
 export interface EpisodeWrite {
@@ -691,6 +693,8 @@ export interface EpisodeWrite {
   season_number?: number;
   is_featured?: boolean;
   cover?: string;             // URL Cloudinary (upload via contexte podcast_cover)
+  guests?: number[];          // IDs des artistes invités
+  transcript?: string;        // transcription écrite (optionnelle)
 }
 
 export interface PodcastSeriesWrite {

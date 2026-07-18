@@ -127,7 +127,19 @@ export default function LiveMusicPage() {
         cover: sForm.cover || undefined,
       };
       if (editS) { await liveMusicApi.sessions.update(editS, payload); toast.success("Session mise à jour"); }
-      else { await liveMusicApi.sessions.create(payload); toast.success("Session créée"); }
+      else {
+        const created = await liveMusicApi.sessions.create(payload);
+        toast.success("Session créée");
+        // Créée « En direct » → lance la diffusion pour obtenir les liens RTMP.
+        if (sForm.status === "live") {
+          try {
+            const res = await liveMusicApi.sessions.goLive(created.slug);
+            const creds = extractStreamCreds(res);
+            if (creds) setLiveCreds({ title: created.title, ...creds });
+            else toast.warning("Session en direct, mais identifiants RTMP non renvoyés (voir la console).");
+          } catch { /* création OK ; go_live dispo via le menu */ }
+        }
+      }
       setSOpen(false); fetchSessions();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
