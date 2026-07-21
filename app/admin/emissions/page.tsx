@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Radio, Calendar, Clock, Eye, MoreHorizontal, Plus, Search, Filter,
-  Wifi, WifiOff, Video, Loader2, Play, Pause, Edit, Share2, Headphones, Copy,
+  Radio, Calendar, Eye, MoreHorizontal, Plus, Search, Filter,
+  WifiOff, Loader2, Play, Pause, Edit, Share2, Headphones, Copy,
   MessageSquare, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -25,36 +24,12 @@ import {
 } from "@/components/ui/select";
 import { emissionsApi, commentsApi, extractStreamCreds, type EmissionList, type EmissionWrite, type EmissionDetail, type EmissionStatus } from "@/lib/api";
 import { HlsPlayer } from "@/components/admin/hls-player";
+import { useLivePlayer } from "@/components/admin/live-player";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
 import { toast } from "sonner";
 
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-function getStatusBadge(status: EmissionList["status"]) {
-  switch (status) {
-    case "live":
-      return (
-        <Badge className="bg-red-500 text-white animate-pulse">
-          <Wifi className="mr-1 h-3 w-3" />En Direct
-        </Badge>
-      );
-    case "scheduled":
-      return (
-        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-          <Clock className="mr-1 h-3 w-3" />Programmé
-        </Badge>
-      );
-    case "recorded":
-      return (
-        <Badge variant="secondary" className="bg-muted text-muted-foreground">
-          <WifiOff className="mr-1 h-3 w-3" />Enregistré
-        </Badge>
-      );
-    default:
-      return null;
-  }
-}
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDuration(minutes: number) {
   if (!minutes) return "—";
@@ -77,6 +52,7 @@ const EMPTY_FORM: EmissionWrite = {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function EmissionsPage() {
+  const { startLive, stopLive } = useLivePlayer();
   const [shows,       setShows]       = useState<EmissionList[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -189,6 +165,10 @@ export default function EmissionsPage() {
             if (creds) setLiveCreds({ title: created.title, ...creds });
             else toast.warning("Émission en direct, mais identifiants RTMP non renvoyés (voir la console).");
             console.log("go_live response (emissions create):", res);
+            // Barre de lecture live globale.
+            let hlsUrl: string | null = null;
+            try { hlsUrl = (await emissionsApi.get(created.slug)).playback_hls_url ?? null; } catch { /* flux pas encore prêt */ }
+            startLive({ title: created.title, hlsUrl });
           } catch { /* la création a réussi ; le go_live reste dispo via le menu */ }
         }
       }
@@ -207,12 +187,15 @@ export default function EmissionsPage() {
   const handleGoLive = async (show: EmissionList) => {
     try {
       const res = await emissionsApi.goLive(show.slug);
-      toast.success("Émission démarrée — en direct");
       const creds = extractStreamCreds(res);
       if (creds) setLiveCreds({ title: show.title, ...creds });
       else toast.warning("Direct démarré, mais le backend n'a pas renvoyé les identifiants RTMPS (voir la console / la réponse go_live).");
       // Diagnostic : trace la réponse pour identifier les champs si besoin.
       console.log("go_live response (emissions):", res);
+      // Barre de lecture live globale (avec le flux HLS dès qu'il est disponible).
+      let hlsUrl: string | null = null;
+      try { hlsUrl = (await emissionsApi.get(show.slug)).playback_hls_url ?? null; } catch { /* flux pas encore prêt */ }
+      startLive({ title: show.title, hlsUrl });
       fetchShows();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur au démarrage de la diffusion");
@@ -225,6 +208,7 @@ export default function EmissionsPage() {
     try {
       await emissionsApi.endLive(slug);
       toast.success("Diffusion arrêtée");
+      stopLive();
       fetchShows();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur à l'arrêt de la diffusion");
@@ -273,19 +257,19 @@ export default function EmissionsPage() {
   const totalViews = shows.reduce((acc, s) => acc + (s.total_views ?? 0), 0);
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-h">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Émissions Live</h1>
-          <p className="text-muted-foreground">Gérez vos diffusions en direct et programmées</p>
+          <h1>Émissions Live</h1>
+          <p>Gérez vos diffusions en direct et programmées</p>
         </div>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90" onClick={openCreate}>
-              <Plus className="mr-2 h-4 w-4" />Nouvelle Émission
-            </Button>
+            <button className="btn btn-red" onClick={openCreate}>
+              <Plus strokeWidth={2.2} />Nouvelle Émission
+            </button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
@@ -353,35 +337,33 @@ export default function EmissionsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="kpis">
         {[
-          { label: "En Direct",        value: liveNow.length,          icon: Radio,    color: "text-red-500"      },
-          { label: "Programmées",      value: scheduled.length,        icon: Calendar, color: "text-blue-500"     },
-          { label: "Spectateurs live", value: liveNow.reduce((a, s) => a + (s.viewer_count ?? 0), 0).toLocaleString(), icon: Eye, color: "text-primary" },
-          { label: "Total vues",       value: totalViews.toLocaleString(), icon: Eye, color: "text-emerald-500"   },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <Card key={label} className="card-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-              <Icon className={`h-4 w-4 ${color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{value}</div>
-            </CardContent>
-          </Card>
+          { label: "En Direct",        value: liveNow.length,          icon: Radio,    bg: "var(--red-soft)",     fg: "var(--red)"     },
+          { label: "Programmées",      value: scheduled.length,        icon: Calendar, bg: "var(--blue-soft)",    fg: "var(--blue)"    },
+          { label: "Spectateurs live", value: liveNow.reduce((a, s) => a + (s.viewer_count ?? 0), 0).toLocaleString(), icon: Eye, bg: "var(--red-soft)", fg: "var(--red)" },
+          { label: "Total vues",       value: totalViews.toLocaleString(), icon: Eye, bg: "var(--emerald-soft)", fg: "var(--emerald)" },
+        ].map(({ label, value, icon: Icon, bg, fg }) => (
+          <div className="kpi" key={label}>
+            <div className="kpi-top">
+              <div className="kpi-ic" style={{ background: bg, color: fg }}><Icon /></div>
+              <div><div className="kpi-lb">{label}</div></div>
+            </div>
+            <div className="kpi-v">{value}</div>
+          </div>
         ))}
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher une émission..." value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input placeholder="Rechercher une émission..." value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <Filter className="mr-2 h-4 w-4" /><SelectValue placeholder="Statut" />
+          <SelectTrigger className="filter">
+            <Filter /><SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les statuts</SelectItem>
@@ -401,33 +383,33 @@ export default function EmissionsPage() {
 
       {/* Shows grid */}
       {!loading && shows.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+        <div className="m-grid">
           {shows.map((show) => (
-            <div key={show.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
-              <div className="relative aspect-video bg-muted">
-                {show.cover_url ? (
-                  <img src={show.cover_url} alt={show.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center"><Video className="h-10 w-10 text-muted-foreground/30" /></div>
+            <div key={show.id} className="m-card">
+              <div className="m-cover">
+                {show.cover_url && (
+                  <img src={show.cover_url} alt={show.title} loading="lazy" decoding="async" />
                 )}
-                {show.status === "live" && (
-                  <Badge className="absolute left-2 top-2 gap-1 bg-red-500 text-white">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE
-                  </Badge>
-                )}
+                {show.status === "live" && <span className="m-tag m-live"><span className="pulse" />LIVE</span>}
+                {show.status === "scheduled" && <span className="m-tag m-sched">Programmé</span>}
                 {(show.status === "live" || show.status === "recorded") && (
-                  <button onClick={() => handleWatch(show)}
-                    className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
-                    <Play className="h-10 w-10 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                  <button className="m-play" onClick={() => handleWatch(show)}>
+                    <div className="pb"><Play /></div>
                   </button>
                 )}
               </div>
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="truncate text-sm font-medium" title={show.title}>{show.title}</p>
+              <div className="m-body">
+                <div className="m-title" title={show.title}>{show.title}</div>
+                <div className="m-series">{formatDuration(show.duration_minutes ?? 0)}</div>
+                <div className="m-meta">
+                  {show.scheduled_at && (
+                    <span className="mi"><Calendar />
+                      {new Date(show.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
+                  )}
+                  <span className="mi"><Eye />{(show.total_views ?? 0).toLocaleString()}</span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                      <button className="row-act"><MoreHorizontal /></button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {show.status === "scheduled" && (
@@ -455,14 +437,6 @@ export default function EmissionsPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  {getStatusBadge(show.status)}
-                  {show.scheduled_at && (
-                    <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />
-                      {new Date(show.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
-                  )}
-                  <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{(show.total_views ?? 0).toLocaleString()}</span>
-                </div>
               </div>
             </div>
           ))}
@@ -470,18 +444,14 @@ export default function EmissionsPage() {
       )}
 
       {!loading && shows.length === 0 && (
-        <Card className="card-shadow">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Radio className="h-12 w-12 text-muted-foreground/50" />
-            <h3 className="mt-4 font-semibold text-foreground">Aucune émission trouvée</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Modifiez vos filtres ou créez une nouvelle émission.
-            </p>
-            <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={() => setDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />Créer une émission
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="ph">
+          <div className="ph-ic"><Radio /></div>
+          <h3>Aucune émission trouvée</h3>
+          <p>Modifiez vos filtres ou créez une nouvelle émission.</p>
+          <button className="btn btn-red" onClick={() => setDialogOpen(true)}>
+            <Plus strokeWidth={2.2} />Créer une émission
+          </button>
+        </div>
       )}
 
       {/* Lecteur : direct ou replay */}
@@ -598,6 +568,6 @@ export default function EmissionsPage() {
           remove={(cid) => commentsApi.remove("emissions", comments.slug, cid)}
         />
       )}
-    </div>
+    </section>
   );
 }

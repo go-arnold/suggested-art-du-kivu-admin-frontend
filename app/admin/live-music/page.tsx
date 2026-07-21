@@ -3,14 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Music, Search, MoreHorizontal, Plus, Trash2, Loader2, Edit,
-  Play, Pause, Eye, Share2, Copy, Radio, Clock, CalendarDays, Users,
+  Play, Pause, Eye, Share2, Copy, Radio, CalendarDays, Users,
   MessageSquare, MessagesSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -30,14 +28,11 @@ import {
   type MusicLiveSession, type MusicLiveSessionWrite, type MusicSessionStatus,
   type MusicLiveSlot, type MusicLiveSlotWrite, type ArtistList,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const S_LABELS: Record<MusicSessionStatus, string> = { live: "En direct", scheduled: "Programmée", ended: "Terminée" };
-const S_COLORS: Record<MusicSessionStatus, string> = {
-  live: "bg-red-500 text-white", scheduled: "bg-blue-100 text-blue-700", ended: "bg-muted text-muted-foreground",
-};
+const S_BADGE: Record<MusicSessionStatus, string> = { live: "b-red", scheduled: "b-blue", ended: "b-gray" };
 
 export default function LiveMusicPage() {
   const [tab, setTab] = useState("sessions");
@@ -212,30 +207,32 @@ export default function LiveMusicPage() {
   const liveCount = sessions.filter((s) => s.status === "live").length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="view">
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Live Music</h1>
-          <p className="mt-1 text-muted-foreground">Sessions musicales en direct et grille de programme</p>
+          <h1>Live Music</h1>
+          <p>Sessions musicales en direct et grille de programme</p>
         </div>
-        {tab === "sessions"
-          ? <Button onClick={openCreateS} className="gap-2"><Plus className="h-4 w-4" />Nouvelle session</Button>
-          : <Button onClick={openCreateP} className="gap-2"><Plus className="h-4 w-4" />Nouveau créneau</Button>}
+        <div className="h-actions">
+          {tab === "sessions"
+            ? <button className="btn btn-red" onClick={openCreateS}><Plus strokeWidth={2.2} />Nouvelle session</button>
+            : <button className="btn btn-red" onClick={openCreateP}><Plus strokeWidth={2.2} />Nouveau créneau</button>}
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="kpis">
         {[
-          { label: "Sessions", value: sessions.length, icon: Music, color: "text-primary" },
-          { label: "En direct", value: liveCount, icon: Radio, color: "text-red-500" },
-          { label: "Créneaux", value: slots.length, icon: CalendarDays, color: "text-info" },
+          { label: "Sessions", value: sessions.length, icon: Music, bg: "var(--red-soft)", fg: "var(--red)" },
+          { label: "En direct", value: liveCount, icon: Radio, bg: "var(--red-soft)", fg: "var(--red)" },
+          { label: "Créneaux", value: slots.length, icon: CalendarDays, bg: "var(--blue-soft)", fg: "var(--blue)" },
         ].map((s) => (
-          <Card key={s.label} className="card-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-              <s.icon className={`h-4 w-4 ${s.color}`} />
-            </CardHeader>
-            <CardContent><div className="text-3xl font-bold font-mono">{s.value}</div></CardContent>
-          </Card>
+          <div className="kpi" key={s.label}>
+            <div className="kpi-top">
+              <div className="kpi-ic" style={{ background: s.bg, color: s.fg }}><s.icon /></div>
+              <div><div className="kpi-lb">{s.label}</div></div>
+            </div>
+            <div className="kpi-v">{s.value}</div>
+          </div>
         ))}
       </div>
 
@@ -247,40 +244,43 @@ export default function LiveMusicPage() {
 
         {/* Sessions */}
         <TabsContent value="sessions" className="mt-6 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Rechercher une session…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <div className="toolbar">
+            <div className="tb-search">
+              <Search />
+              <input placeholder="Rechercher une session…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
           </div>
           {loadingS ? (
             <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
           ) : sessions.length === 0 ? (
-            <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12">
-              <Music className="h-12 w-12 text-muted-foreground/50" /><p className="mt-4 text-sm text-muted-foreground">Aucune session.</p>
-            </CardContent></Card>
+            <div className="ph">
+              <div className="ph-ic"><Music /></div>
+              <h3>Aucune session</h3>
+              <p>Créez une session musicale live pour commencer à diffuser.</p>
+              <button className="btn btn-red" onClick={openCreateS}><Plus strokeWidth={2.2} />Nouvelle session</button>
+            </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            <div className="m-grid">
               {sessions.map((s) => (
-                <div key={s.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
-                  <div className="relative flex aspect-video items-center justify-center bg-primary/5">
-                    <Music className="h-10 w-10 text-primary/30" />
-                    {s.status === "live" && (
-                      <Badge className="absolute left-2 top-2 gap-1 bg-red-500 text-white">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE
-                      </Badge>
-                    )}
+                <div key={s.id} className="m-card">
+                  <div className="m-cover">
+                    {s.status === "live" && <span className="m-tag m-live"><span className="pulse" />LIVE</span>}
+                    {s.status === "scheduled" && <span className="m-tag m-sched">Programmée</span>}
                     {(s.status === "live" || (s.status === "ended" && s.playback_hls_url)) && (
-                      <button onClick={() => setWatch(s)}
-                        className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
-                        <Play className="h-10 w-10 text-primary opacity-0 transition-opacity group-hover:opacity-100" />
+                      <button className="m-play" onClick={() => setWatch(s)}>
+                        <div className="pb"><Play /></div>
                       </button>
                     )}
                   </div>
-                  <div className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="truncate text-sm font-medium" title={s.title}>{s.title}</p>
+                  <div className="m-body">
+                    <div className="m-title" title={s.title}>{s.title}</div>
+                    <div className="m-series">{s.artist_names || S_LABELS[s.status]}</div>
+                    <div className="m-meta">
+                      <span className={`badge ${S_BADGE[s.status]}`}><span className="bd" />{S_LABELS[s.status]}</span>
+                      {s.online_followers && <span className="mi"><Users />{s.online_followers}</span>}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                          <button className="row-act"><MoreHorizontal /></button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {s.status === "live" ? (
@@ -303,11 +303,6 @@ export default function LiveMusicPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <Badge className={cn("text-[10px]", S_COLORS[s.status])}>{S_LABELS[s.status]}</Badge>
-                      {s.artist_names && <span className="truncate">{s.artist_names}</span>}
-                      {s.online_followers && <span className="flex items-center gap-1"><Users className="h-3 w-3" />{s.online_followers}</span>}
-                    </div>
                   </div>
                 </div>
               ))}
@@ -320,23 +315,28 @@ export default function LiveMusicPage() {
           {loadingP ? (
             <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
           ) : slots.length === 0 ? (
-            <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12">
-              <CalendarDays className="h-12 w-12 text-muted-foreground/50" /><p className="mt-4 text-sm text-muted-foreground">Aucun créneau.</p>
-            </CardContent></Card>
+            <div className="ph">
+              <div className="ph-ic"><CalendarDays /></div>
+              <h3>Aucun créneau</h3>
+              <p>Ajoutez un créneau à la grille de programme.</p>
+              <button className="btn btn-red" onClick={openCreateP}><Plus strokeWidth={2.2} />Nouveau créneau</button>
+            </div>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {slots.map((s) => (
-                <Card key={s.id} className="card-shadow">
-                  <CardContent className="flex items-start justify-between gap-2 p-4">
-                    <div className="min-w-0">
-                      <span className="text-xs text-muted-foreground">{s.day_name ?? DAYS[s.day_of_week] ?? ""}</span>
-                      <h3 className="truncate font-semibold text-foreground">{s.title}</h3>
-                      {s.artist_name && <p className="truncate text-xs text-muted-foreground">{s.artist_name}</p>}
-                      <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{(s.start_time ?? "").slice(0, 5)}–{(s.end_time ?? "").slice(0, 5)}</span>
+            <div className="panel">
+              <div className="sched">
+                {slots.map((s) => (
+                  <div className="sched-i" key={s.id}>
+                    <span className="sched-t">{(s.start_time ?? "").slice(0, 5)}–{(s.end_time ?? "").slice(0, 5)}</span>
+                    <div className="sched-m">
+                      <div className="t">{s.title}</div>
+                      <div className="s">
+                        {s.day_name ?? DAYS[s.day_of_week] ?? ""}
+                        {s.artist_name ? ` · ${s.artist_name}` : ""}
+                      </div>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                        <button className="row-act"><MoreHorizontal /></button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openEditP(s)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
@@ -344,9 +344,9 @@ export default function LiveMusicPage() {
                         <DropdownMenuItem className="text-destructive" onClick={() => delSlot(s.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </TabsContent>
@@ -460,7 +460,7 @@ export default function LiveMusicPage() {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  {watch.status === "live" && <Badge className="bg-red-500 text-white">LIVE</Badge>}{watch.title}
+                  {watch.status === "live" && <span className="badge b-red"><span className="bd" />LIVE</span>}{watch.title}
                 </DialogTitle>
                 <DialogDescription>{watch.status === "live" ? "Diffusion en direct." : "Lecture de la rediffusion."}</DialogDescription>
               </DialogHeader>
@@ -530,6 +530,6 @@ export default function LiveMusicPage() {
           remove={(mid) => chatApi.remove("live_music/sessions", chatFor.slug, mid)}
         />
       )}
-    </div>
+    </section>
   );
 }

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import {
   Search, Plus, Filter, LayoutGrid, List, Video,
   MoreHorizontal, Eye, Copy, Trash2,
-  Check, Calendar, Loader2, Play,
+  Calendar, Loader2, Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,15 @@ const TYPE_COLORS: Record<string, string> = {
   premiers: "bg-pink-100 text-pink-700",
   docs: "bg-amber-100 text-amber-700",
   studio_sessions: "bg-emerald-100 text-emerald-700",
+};
+
+// Dégradés de couverture (asset-th) par catégorie.
+const ASSET_BG: Record<string, string> = {
+  freestyles: "linear-gradient(135deg,#e9938f,#e8433f)",
+  interviews: "linear-gradient(135deg,#9db4d8,#5b7fc4)",
+  premiers: "linear-gradient(135deg,#e2a9c4,#c9689a)",
+  docs: "linear-gradient(135deg,#e8d5a8,#d4b463)",
+  studio_sessions: "linear-gradient(135deg,#9fd8c0,#4fae86)",
 };
 
 export default function MediathequePage() {
@@ -208,65 +217,58 @@ export default function MediathequePage() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Médiathèque</h1>
-          <p className="mt-1 text-muted-foreground">
-            {totalCount.toLocaleString()} vidéos · WebTV Art-du-Kivu
-          </p>
+          <h1>Médiathèque</h1>
+          <p>{totalCount.toLocaleString()} vidéos · WebTV Art-du-Kivu</p>
         </div>
-        <Button onClick={() => { setForm(EMPTY); setAddOpen(true); }}>
-          <Plus className="mr-2 h-4 w-4" />Ajouter une vidéo
-        </Button>
+        <div className="h-actions">
+          <button className="btn btn-red" onClick={() => { setForm(EMPTY); setAddOpen(true); }}>
+            <Plus strokeWidth={2.2} />Ajouter une vidéo
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 rounded-xl bg-card p-4 card-shadow sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input
             placeholder="Rechercher une vidéo..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-            className="pl-9"
           />
         </div>
-        <div className="flex gap-2">
-          <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-[160px]">
-              <Filter className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="Catégorie" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes</SelectItem>
-              {categories.map((cat) => (
-                <SelectItem key={cat} value={cat}>{CATEGORY_LABELS[cat]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex rounded-lg border border-input">
-            <Button variant={viewMode === "grid" ? "secondary" : "ghost"} size="icon" className="rounded-r-none" onClick={() => setViewMode("grid")}>
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button variant={viewMode === "list" ? "secondary" : "ghost"} size="icon" className="rounded-l-none" onClick={() => setViewMode("list")}>
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
+        <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
+          <SelectTrigger className="filter">
+            <Filter />
+            <SelectValue placeholder="Catégorie" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes</SelectItem>
+            {categories.map((cat) => (
+              <SelectItem key={cat} value={cat}>{CATEGORY_LABELS[cat]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="view-tog">
+          <button className={viewMode === "grid" ? "on" : ""} onClick={() => setViewMode("grid")}><LayoutGrid /></button>
+          <button className={viewMode === "list" ? "on" : ""} onClick={() => setViewMode("list")}><List /></button>
         </div>
       </div>
 
       {/* Bulk Actions */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center gap-4 rounded-lg bg-primary/10 px-4 py-3">
+        <div className="flex items-center gap-4 rounded-lg px-4 py-3" style={{ background: "var(--red-soft)", marginBottom: 16 }}>
           <Checkbox checked={selectedIds.length === videos.length} onCheckedChange={toggleSelectAll} />
           <span className="text-sm font-medium">
             {selectedIds.length} vidéo{selectedIds.length > 1 ? "s" : ""} sélectionnée{selectedIds.length > 1 ? "s" : ""}
           </span>
-          <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
-            <Trash2 className="mr-2 h-4 w-4" />Supprimer
-          </Button>
+          <button className="btn btn-red" style={{ marginLeft: "auto" }} onClick={handleBulkDelete}>
+            <Trash2 />Supprimer
+          </button>
         </div>
       )}
 
@@ -279,59 +281,35 @@ export default function MediathequePage() {
 
       {/* Grid View */}
       {!loading && viewMode === "grid" && (
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="assets">
           {videos.map((video) => {
             const isSelected = selectedIds.includes(video.id);
             return (
               <div
                 key={video.id}
-                className={cn(
-                  "group relative overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg cursor-pointer",
-                  isSelected && "ring-2 ring-primary"
-                )}
+                className="asset"
+                style={isSelected ? { outline: "2px solid var(--red)", outlineOffset: -2 } : undefined}
                 onClick={() => setPreviewVideo(video)}
               >
-                {/* Selection */}
-                <div
-                  className={cn("absolute left-2 top-2 z-10 transition-opacity", isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
-                  onClick={(e) => { e.stopPropagation(); toggleSelect(video.id); }}
-                >
-                  <div className={cn("flex h-6 w-6 items-center justify-center rounded-md border-2 transition-colors", isSelected ? "border-primary bg-primary text-primary-foreground" : "border-background bg-background/80")}>
-                    {isSelected && <Check className="h-4 w-4" />}
-                  </div>
-                </div>
-
-                {/* Category Badge */}
-                <div className="absolute right-2 top-2 z-10">
-                  <Badge className={cn("text-xs", TYPE_COLORS[video.category] ?? "bg-muted text-muted-foreground")}>
-                    {CATEGORY_LABELS[video.category] ?? video.category}
-                  </Badge>
-                </div>
-
-                {/* Thumbnail */}
-                <div className="relative aspect-video overflow-hidden bg-muted">
+                <div className="asset-th" style={{ background: ASSET_BG[video.category] ?? "linear-gradient(135deg,#dbe7f0,#c3d4e2)" }}>
                   {video.thumbnail_url ? (
-                    <img src={video.thumbnail_url} alt={video.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    <img src={video.thumbnail_url} alt={video.title} loading="lazy" decoding="async" />
                   ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <Video className="h-12 w-12 text-muted-foreground/30" />
-                    </div>
+                    <Video />
                   )}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                    <Play className="h-10 w-10 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <span className="tp">{CATEGORY_LABELS[video.category] ?? video.category}</span>
+                  <div
+                    style={{ position: "absolute", top: 8, right: 8, zIndex: 2 }}
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(video.id); }}
+                  >
+                    <Checkbox checked={isSelected} />
                   </div>
-                  {/* Duration */}
-                  <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white font-mono">
-                    {video.duration}
-                  </span>
                 </div>
-
-                {/* Info */}
-                <div className="p-3">
-                  <p className="truncate text-sm font-medium" title={video.title}>{video.title}</p>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{video.view_count.toLocaleString()} vues</span>
-                    {video.location && <><span>·</span><span>{video.location}</span></>}
+                <div className="asset-b">
+                  <div className="t" title={video.title}>{video.title}</div>
+                  <div className="s">
+                    {video.view_count.toLocaleString()} vues
+                    {video.duration ? ` · ${video.duration}` : ""}
                   </div>
                 </div>
               </div>
@@ -422,20 +400,23 @@ export default function MediathequePage() {
 
       {/* Empty State */}
       {!loading && videos.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-xl bg-card p-12 card-shadow text-center">
-          <Video className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <h3 className="font-display text-lg font-semibold">Aucune vidéo trouvée</h3>
-          <p className="mt-1 text-muted-foreground">Ajuste tes filtres, ou ajoute une vidéo avec le bouton en haut à droite.</p>
+        <div className="ph">
+          <div className="ph-ic"><Video /></div>
+          <h3>Aucune vidéo trouvée</h3>
+          <p>Ajuste tes filtres, ou ajoute une vidéo avec le bouton en haut à droite.</p>
+          <button className="btn btn-red" onClick={() => { setForm(EMPTY); setAddOpen(true); }}>
+            <Plus strokeWidth={2.2} />Ajouter une vidéo
+          </button>
         </div>
       )}
 
       {/* Pagination */}
       {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">Page {page} sur {totalPages} · {totalCount.toLocaleString()} vidéos</p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Précédent</Button>
-            <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Suivant</Button>
+        <div className="tbl-foot" style={{ border: "1px solid var(--line)", borderRadius: 14, marginTop: 16 }}>
+          <span className="info">Page {page} sur {totalPages} · {totalCount.toLocaleString()} vidéos</span>
+          <div className="pager">
+            <button className="pg" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Précédent</button>
+            <button className="pg" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Suivant</button>
           </div>
         </div>
       )}
@@ -554,6 +535,6 @@ export default function MediathequePage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

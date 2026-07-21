@@ -3,90 +3,90 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  BarChart3, TrendingUp, Eye, Users, FileText, Music, Calendar,
-  Headphones, Video, Loader2, Heart, Ticket, Disc3, Play,
+  BarChart3, TrendingUp, Eye, FileText, Music, Calendar,
+  Headphones, Video, Loader2, Heart, Disc3, Play,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { analyticsApi, type DashboardStats } from "@/lib/api";
+
+// ── Tons (icônes KPI) ───────────────────────────────────────────────────────────
+
+const TONES: Record<string, { bg: string; fg: string }> = {
+  primary:     { bg: "var(--red-soft)",     fg: "var(--red)" },
+  warning:     { bg: "var(--gold-soft)",    fg: "var(--gold)" },
+  info:        { bg: "var(--blue-soft)",    fg: "var(--blue)" },
+  success:     { bg: "var(--emerald-soft)", fg: "var(--emerald)" },
+  destructive: { bg: "var(--red-soft)",     fg: "var(--red)" },
+};
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
 
 function StatCard({
-  title, value, subtitle, icon: Icon, color = "text-primary", loading = false,
+  title, value, subtitle, icon: Icon, tone = "primary", loading = false,
 }: {
   title: string;
   value: string | number;
   subtitle?: string;
   icon: React.ComponentType<{ className?: string }>;
-  color?: string;
+  tone?: string;
   loading?: boolean;
 }) {
+  const c = TONES[tone] ?? TONES.primary;
   return (
-    <Card className="card-shadow">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className={`h-4 w-4 ${color}`} />
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        ) : (
-          <>
-            <div className="text-3xl font-bold font-mono">{value}</div>
-            {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <div className="kpi">
+      <div className="kpi-top">
+        <div className="kpi-ic" style={{ background: c.bg, color: c.fg }}>
+          <Icon />
+        </div>
+        <div><div className="kpi-lb">{title}</div></div>
+      </div>
+      <div className="kpi-v">
+        {loading ? <Loader2 className="animate-spin" style={{ width: 24, height: 24 }} /> : value}
+      </div>
+      {subtitle && (
+        <div className="kpi-foot"><span className="muted">{subtitle}</span></div>
+      )}
+    </div>
   );
 }
 
-// ── Top list générique ──────────────────────────────────────────────────────────
+// ── Top list générique (classement) ─────────────────────────────────────────────
 
 function TopList<T extends { id: number; title: string; slug: string }>({
-  title, icon: Icon, color, bar, items, value, href,
+  title, icon: Icon, sub, items, value, href,
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: string;
-  bar: string;
+  sub: string;
   items: T[];
   value: (it: T) => number;
   href: (it: T) => string;
 }) {
-  const max = items.length ? Math.max(...items.map(value)) : 0;
   return (
-    <Card className="card-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon className={`h-5 w-5 ${color}`} />{title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune donnée.</p>
-        ) : (
-          items.map((it, i) => {
-            const v = value(it);
-            return (
-              <Link key={it.id} href={href(it)} className="flex items-center gap-4 group">
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold ${color}`}>
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium group-hover:text-primary transition-colors">{it.title}</p>
-                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                    <div className={`h-full rounded-full ${bar} transition-all`}
-                      style={{ width: `${max > 0 ? (v / max) * 100 : 0}%` }} />
-                  </div>
-                </div>
-                <span className="shrink-0 font-mono text-sm text-muted-foreground">{v.toLocaleString()}</span>
-              </Link>
-            );
-          })
-        )}
-      </CardContent>
-    </Card>
+    <div className="panel">
+      <div className="panel-h">
+        <div>
+          <h3><Icon />{title}</h3>
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div className="panel-b">
+          <p className="muted" style={{ padding: "10px 0" }}>Aucune donnée.</p>
+        </div>
+      ) : (
+        <div className="rank">
+          {items.map((it, i) => (
+            <Link className="rank-i" key={it.id} href={href(it)}>
+              <span className={`rank-n${i === 0 ? " top" : ""}`}>{i + 1}</span>
+              <div className="rank-m">
+                <div className="t">{it.title}</div>
+                <div className="s">{sub}</div>
+              </div>
+              <span className="rank-v">{value(it).toLocaleString()}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -110,61 +110,63 @@ export default function StatistiquesPage() {
   const n = (v?: number) => (loading ? "—" : (v ?? 0).toLocaleString());
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Statistiques</h1>
-        <p className="mt-1 text-muted-foreground">Vue d&apos;ensemble de la plateforme Art-du-Kivu</p>
+      <div className="page-h">
+        <div>
+          <h1>Statistiques</h1>
+          <p>Vue d&apos;ensemble de la plateforme Art-du-Kivu</p>
+        </div>
       </div>
 
       {error && (
-        <Card className="card-shadow border-destructive/40">
-          <CardContent className="py-4 text-sm text-destructive">
+        <div className="panel" style={{ borderColor: "var(--red)", marginBottom: 18 }}>
+          <div className="panel-b" style={{ paddingTop: 16, color: "var(--red-ink)" }}>
             Impossible de charger les statistiques (accès administrateur requis ou service indisponible).
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Compteurs de contenu */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Articles"        value={n(c.articles)}         icon={FileText}   color="text-primary"     loading={loading} subtitle="publiés" />
-        <StatCard title="Artistes"        value={n(c.artists)}          icon={Music}      color="text-warning"     loading={loading} subtitle="sur la plateforme" />
-        <StatCard title="Événements"      value={n(c.events)}           icon={Calendar}   color="text-info"        loading={loading} subtitle={`${n(c.event_registrations)} inscriptions`} />
-        <StatCard title="Séries podcast"  value={n(c.podcast_series)}   icon={Headphones} color="text-success"     loading={loading} subtitle={`${n(c.podcast_episodes)} épisodes`} />
+      <div className="kpis">
+        <StatCard title="Articles"         value={n(c.articles)}         icon={FileText}   tone="primary" loading={loading} subtitle="publiés" />
+        <StatCard title="Artistes"         value={n(c.artists)}          icon={Music}      tone="warning" loading={loading} subtitle="sur la plateforme" />
+        <StatCard title="Événements"       value={n(c.events)}           icon={Calendar}   tone="info"    loading={loading} subtitle={`${n(c.event_registrations)} inscriptions`} />
+        <StatCard title="Séries podcast"   value={n(c.podcast_series)}    icon={Headphones} tone="success" loading={loading} subtitle={`${n(c.podcast_episodes)} épisodes`} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Vidéos WebTV"    value={n(c.webtv_videos)}     icon={Video}      color="text-info"        loading={loading} subtitle="médiathèque" />
-        <StatCard title="Sorties"         value={n(c.releases)}         icon={Disc3}      color="text-primary"     loading={loading} subtitle="musicales" />
-        <StatCard title="Programmes radio" value={n(c.radio_programs)}  icon={BarChart3}  color="text-warning"     loading={loading} subtitle="grille" />
-        <StatCard title="Épisodes"        value={n(c.podcast_episodes)} icon={Headphones} color="text-success"     loading={loading} subtitle="podcast" />
+      <div className="kpis">
+        <StatCard title="Vidéos WebTV"     value={n(c.webtv_videos)}      icon={Video}      tone="info"    loading={loading} subtitle="médiathèque" />
+        <StatCard title="Sorties"          value={n(c.releases)}          icon={Disc3}      tone="primary" loading={loading} subtitle="musicales" />
+        <StatCard title="Programmes radio" value={n(c.radio_programs)}     icon={BarChart3}  tone="warning" loading={loading} subtitle="grille" />
+        <StatCard title="Épisodes"         value={n(c.podcast_episodes)}  icon={Headphones} tone="success" loading={loading} subtitle="podcast" />
       </div>
 
       {/* Totaux d'engagement */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Vues articles"   value={n(t.article_views)}    icon={Eye}        color="text-primary"     loading={loading} subtitle="cumulées" />
-        <StatCard title="Likes articles"  value={n(t.article_likes)}    icon={Heart}      color="text-destructive" loading={loading} subtitle="cumulés" />
-        <StatCard title="Vues WebTV"      value={n(t.webtv_views)}      icon={Eye}        color="text-info"        loading={loading} subtitle="cumulées" />
-        <StatCard title="Écoutes podcast" value={n(t.podcast_plays)}    icon={Play}       color="text-success"     loading={loading} subtitle="cumulées" />
+      <div className="kpis">
+        <StatCard title="Vues articles"    value={n(t.article_views)}     icon={Eye}        tone="primary"     loading={loading} subtitle="cumulées" />
+        <StatCard title="Likes articles"   value={n(t.article_likes)}     icon={Heart}      tone="destructive" loading={loading} subtitle="cumulés" />
+        <StatCard title="Vues WebTV"       value={n(t.webtv_views)}       icon={Eye}        tone="info"        loading={loading} subtitle="cumulées" />
+        <StatCard title="Écoutes podcast"  value={n(t.podcast_plays)}     icon={Play}       tone="success"     loading={loading} subtitle="cumulées" />
       </div>
 
       {/* Tops */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid-2b">
         <TopList
-          title="Articles les plus lus" icon={TrendingUp} color="text-primary" bar="bg-primary"
+          title="Articles les plus lus" icon={TrendingUp} sub="Article"
           items={data?.top_articles ?? []} value={(a) => a.view_count}
           href={(a) => `/admin/articles/${a.slug}`}
         />
         <TopList
-          title="Épisodes les plus écoutés" icon={Headphones} color="text-success" bar="bg-success"
+          title="Épisodes les plus écoutés" icon={Headphones} sub="Épisode"
           items={data?.top_podcast_episodes ?? []} value={(e) => e.play_count}
           href={() => "/admin/podcasts"}
         />
       </div>
       <TopList
-        title="Vidéos WebTV les plus vues" icon={Video} color="text-info" bar="bg-info"
+        title="Vidéos WebTV les plus vues" icon={Video} sub="Vidéo"
         items={data?.top_webtv_videos ?? []} value={(v) => v.view_count}
         href={() => "/admin/mediatheque"}
       />
-    </div>
+    </section>
   );
 }

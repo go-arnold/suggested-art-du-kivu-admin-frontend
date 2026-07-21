@@ -2,20 +2,18 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Headphones, Play, Pause, Plus, Search, Filter, MoreHorizontal,
-  Clock, Calendar, BarChart3, Mic, Edit, Trash2, Heart, Loader2, MessageSquare,
+  Headphones, Play, Pause, Plus, Search, MoreVertical,
+  Clock, BarChart3, Mic, Edit, Trash2, Heart, Loader2, MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle, DialogTrigger,
+  DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,7 +21,6 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   podcastsApi, commentsApi, artistsApi,
   type PodcastSeriesList, type EpisodeList, type EpisodeWrite,
@@ -31,7 +28,6 @@ import {
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const EMPTY_EP = {
@@ -39,8 +35,28 @@ const EMPTY_EP = {
   audio_url: "", duration: "", cover: "",
   episode_number: "", season_number: "",
   is_featured: false, published_at: "",
-  guests: [] as number[], transcript: "",
+  guests: [] as number[],          // IDs d'artistes invités
+  guestNames: [] as string[],      // invités non-artistes (noms libres)
+  transcript: "",
 };
+
+const COVER_GRADIENTS = ["", "c2", "c3"];
+
+/**
+ * Une URL audio est jugée « lisible » si elle est vide, ou en HTTPS et pointant
+ * soit vers Cloudinary, soit vers un fichier audio direct (.mp3/.m4a/…).
+ * Les liens de pages / embeds (SoundCloud, YouTube, Spotify…) ne sont pas des
+ * fichiers lisibles et provoquent des erreurs CORS côté client → on les bloque.
+ */
+function isPlayableAudioUrl(url: string): boolean {
+  const u = url.trim();
+  if (!u) return true;
+  let parsed: URL;
+  try { parsed = new URL(u); } catch { return false; }
+  if (parsed.protocol !== "https:") return false;
+  if (/(res\.)?cloudinary\.com$/.test(parsed.hostname)) return true;
+  return /\.(mp3|m4a|aac|ogg|oga|wav|flac)$/i.test(parsed.pathname);
+}
 
 /** ISO → valeur pour <input type="datetime-local"> (heure locale). */
 function toLocalInput(iso?: string | null): string {
@@ -86,12 +102,23 @@ export default function PodcastsPage() {
   const toggleGuest = (id: number) =>
     setForm((f) => ({ ...f, guests: f.guests.includes(id) ? f.guests.filter((x) => x !== id) : [...f.guests, id] }));
 
-  // Création d'une série depuis le formulaire d'épisode
+  // Invités non-artistes (noms libres)
+  const [guestNameInput, setGuestNameInput] = useState("");
+  const addGuestName = () => {
+    const v = guestNameInput.trim();
+    if (v && !form.guestNames.includes(v)) setForm((f) => ({ ...f, guestNames: [...f.guestNames, v] }));
+    setGuestNameInput("");
+  };
+  const removeGuestName = (n: string) =>
+    setForm((f) => ({ ...f, guestNames: f.guestNames.filter((x) => x !== n) }));
+
+  // Création / édition d'une série
   const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
   const [seriesDialogOpen, setSeriesDialogOpen] = useState(false);
   const [savingSeries, setSavingSeries] = useState(false);
   const EMPTY_SERIES = { title: "", category: "", description: "", cover: "", is_featured: false };
   const [seriesForm, setSeriesForm] = useState(EMPTY_SERIES);
+  const [editingSeriesSlug, setEditingSeriesSlug] = useState<string | null>(null);
 
   const loadPodcasts = useCallback(async (): Promise<PodcastSeriesList[]> => {
     setLoadingPodcasts(true);
@@ -119,7 +146,25 @@ export default function PodcastsPage() {
       .catch(() => { /* invités non bloquants */ });
   }, []);
 
-  const handleCreateSeries = async () => {
+  const openCreateSeries = () => {
+    setEditingSeriesSlug(null);
+    setSeriesForm(EMPTY_SERIES);
+    setSeriesDialogOpen(true);
+  };
+
+  const openEditSeries = (p: PodcastSeriesList) => {
+    setEditingSeriesSlug(p.slug);
+    setSeriesForm({
+      title: p.title ?? "",
+      category: p.category ?? "",
+      description: p.description ?? "",
+      cover: p.cover_url ?? "",
+      is_featured: !!p.is_featured,
+    });
+    setSeriesDialogOpen(true);
+  };
+
+  const handleSubmitSeries = async () => {
     if (!seriesForm.title.trim()) { toast.error("Le titre de la série est obligatoire"); return; }
     if (!seriesForm.category)     { toast.error("La catégorie est obligatoire"); return; }
     setSavingSeries(true);
@@ -131,18 +176,43 @@ export default function PodcastsPage() {
         cover: seriesForm.cover || undefined,
         is_featured: seriesForm.is_featured,
       };
-      const created = await podcastsApi.create(payload);
-      toast.success("Série créée");
-      await loadPodcasts();
-      // sélectionne automatiquement la nouvelle série dans le formulaire d'épisode
-      setForm((f) => ({ ...f, series: String(created.id) }));
+      if (editingSeriesSlug) {
+        await podcastsApi.update(editingSeriesSlug, payload);
+        toast.success("Série mise à jour");
+        await loadPodcasts();
+      } else {
+        const created = await podcastsApi.create(payload);
+        toast.success("Série créée");
+        await loadPodcasts();
+        // sélectionne automatiquement la nouvelle série dans le formulaire d'épisode
+        setForm((f) => ({ ...f, series: String(created.id) }));
+      }
       setSeriesForm(EMPTY_SERIES);
+      setEditingSeriesSlug(null);
       setSeriesDialogOpen(false);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la création de la série");
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement de la série");
     } finally {
       setSavingSeries(false);
     }
+  };
+
+  const handleDeleteSeries = async (p: PodcastSeriesList) => {
+    if (!confirm(`Supprimer la série « ${p.title} » et détacher ses épisodes ?`)) return;
+    try {
+      await podcastsApi.delete(p.slug);
+      toast.success("Série supprimée");
+      loadPodcasts();
+      fetchEpisodes();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la suppression");
+    }
+  };
+
+  // Naviguer vers les épisodes d'une série (arborescence Série → Épisodes).
+  const viewSeriesEpisodes = (p: PodcastSeriesList) => {
+    setFilterPodcast(p.slug);
+    setActiveTab("episodes");
   };
 
   const fetchEpisodes = useCallback(async () => {
@@ -188,21 +258,34 @@ export default function PodcastsPage() {
       season_number: ep.season_number ? String(ep.season_number) : "",
       is_featured: !!ep.is_featured,
       published_at: toLocalInput(ep.published_at),
-      guests: [], transcript: "",
+      guests: [], guestNames: [], transcript: "",
     });
     setIsCreateDialogOpen(true);
     // guests + transcript + audio_url ne sont que dans le détail → on complète.
     podcastsApi.episodes.get(ep.slug).then((d) => {
-      const guestIds = (d.guests ?? []).map((g) => (typeof g === "number" ? g : g.id));
-      setForm((f) => ({ ...f, guests: guestIds, transcript: d.transcript ?? "", audio_url: d.audio_url ?? f.audio_url }));
+      const guestIds: number[] = [];
+      const guestNames: string[] = [];
+      for (const g of d.guests ?? []) {
+        if (typeof g === "number") guestIds.push(g);
+        else if (typeof g === "string") guestNames.push(g);
+        else if (g && typeof g.id === "number") guestIds.push(g.id);
+        else if (g && g.name) guestNames.push(g.name);
+      }
+      setForm((f) => ({ ...f, guests: guestIds, guestNames, transcript: d.transcript ?? "", audio_url: d.audio_url ?? f.audio_url }));
     }).catch(() => { /* on garde les valeurs de la liste */ });
   };
 
   const handleSubmitEpisode = async () => {
     if (!form.title || !form.series) { toast.error("Titre et série requis"); return; }
-    if (form.guests.length === 0) { toast.error("Au moins un invité est requis"); return; }
+    // Bloque les URLs audio non lisibles (pages/embeds → CORS côté client).
+    if (form.audio_url.trim() && !isPlayableAudioUrl(form.audio_url)) {
+      toast.error("URL audio non compatible : téléversez le fichier ou collez un lien direct .mp3/.m4a (les liens de pages ou d'embed provoquent une erreur CORS côté client).");
+      return;
+    }
     setSubmitting(true);
     try {
+      // Invités : IDs d'artistes + noms libres d'invités non-artistes.
+      const guests: (number | string)[] = [...form.guests, ...form.guestNames];
       // Champs communs (création + édition)
       const common: Partial<EpisodeWrite> = {
         title: form.title.trim(),
@@ -214,7 +297,7 @@ export default function PodcastsPage() {
         episode_number: form.episode_number ? Number(form.episode_number) : undefined,
         season_number: form.season_number ? Number(form.season_number) : undefined,
         is_featured: form.is_featured,
-        guests: form.guests,
+        guests: guests.length ? guests : undefined,
         transcript: form.transcript.trim() || undefined,
       };
       if (editingSlug) {
@@ -262,199 +345,59 @@ export default function PodcastsPage() {
   const totalPlays = episodes.reduce((acc, ep) => acc + (ep.play_count ?? 0), 0);
   const totalEpisodes = podcasts.reduce((acc, p) => acc + (p.episode_count ?? 0), 0);
 
+  const kpis = [
+    { label: "Séries", value: podcasts.length, icon: Mic, bg: "var(--red-soft)", color: "var(--red)" },
+    { label: "Épisodes", value: totalEpisodes, icon: Headphones, bg: "var(--blue-soft)", color: "var(--blue)" },
+    { label: "Écoutes", value: totalPlays.toLocaleString(), icon: BarChart3, bg: "var(--emerald-soft)", color: "var(--emerald)" },
+    { label: "En vedette", value: episodes.filter((e) => e.is_featured).length, icon: Heart, bg: "var(--gold-soft)", color: "var(--gold)" },
+  ];
+
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-h">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Podcasts</h1>
-          <p className="text-muted-foreground">Gérez vos podcasts et épisodes audio</p>
+          <h1>Podcasts</h1>
+          <p>Gérez vos podcasts et épisodes audio</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90" onClick={openCreate}>
-              <Plus className="mr-2 h-4 w-4" />Nouvel Épisode
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingSlug ? "Modifier l'Épisode" : "Ajouter un Épisode"}</DialogTitle>
-              <DialogDescription>
-                {editingSlug
-                  ? "Mettez à jour les informations de l'épisode."
-                  : "Créez un nouvel épisode pour l'un de vos podcasts."}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <Label>Série / Podcast</Label>
-                  <button type="button" onClick={() => { setSeriesForm(EMPTY_SERIES); setSeriesDialogOpen(true); }}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                    <Plus className="h-3 w-3" />Nouvelle série
-                  </button>
-                </div>
-                <Select value={form.series} onValueChange={(v) => setForm({ ...form, series: v })}>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner un podcast" /></SelectTrigger>
-                  <SelectContent>
-                    {podcasts.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Série introuvable ? Cliquez sur « Nouvelle série » pour la créer.
-                </p>
-              </div>
-              <div className="grid gap-2">
-                <Label>Titre</Label>
-                <Input placeholder="Ex: Interview avec..." value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Description</Label>
-                <Textarea placeholder="Décrivez cet épisode..." rows={3} value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })} />
-              </div>
-              <MediaUpload
-                label="Fichier audio (upload)" context="podcast_audio" variant="audio" accept="audio/*"
-                value={form.audio_url || null} onChange={(url) => setForm({ ...form, audio_url: url ?? "" })}
-                onDuration={(d) => setForm((f) => ({ ...f, duration: d }))}
-              />
-              <div className="grid gap-2">
-                <Label>…ou coller une URL audio</Label>
-                <Input type="url" placeholder="https://… .mp3" value={form.audio_url}
-                  onChange={(e) => setForm({ ...form, audio_url: e.target.value })} />
-              </div>
-              <MediaUpload
-                label="Miniature" context="podcast_cover" aspect="square"
-                value={form.cover || null} onChange={(url) => setForm({ ...form, cover: url ?? "" })}
-              />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label>Durée</Label>
-                  <Input placeholder="12:34" maxLength={10} value={form.duration}
-                    onChange={(e) => setForm({ ...form, duration: e.target.value })} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Date de publication</Label>
-                  <Input type="datetime-local" value={form.published_at}
-                    onChange={(e) => setForm({ ...form, published_at: e.target.value })} />
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label>Saison</Label>
-                  <Input type="number" min={0} placeholder="1" value={form.season_number}
-                    onChange={(e) => setForm({ ...form, season_number: e.target.value })} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>N° d'épisode</Label>
-                  <Input type="number" min={0} placeholder="1" value={form.episode_number}
-                    onChange={(e) => setForm({ ...form, episode_number: e.target.value })} />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label>Invité(s) *</Label>
-                <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
-                  {artists.length === 0 && <p className="p-2 text-xs text-muted-foreground">Aucun artiste. Créez d&apos;abord des artistes.</p>}
-                  {artists.map((a) => (
-                    <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted">
-                      <input type="checkbox" checked={form.guests.includes(a.id)} onChange={() => toggleGuest(a.id)} />
-                      {a.name}
-                    </label>
-                  ))}
-                </div>
-                {form.guests.length > 0 && <p className="text-xs text-muted-foreground">{form.guests.length} invité(s) sélectionné(s)</p>}
-              </div>
-              <div className="grid gap-2">
-                <Label>Transcription (optionnelle)</Label>
-                <Textarea rows={3} value={form.transcript}
-                  onChange={(e) => setForm({ ...form, transcript: e.target.value })}
-                  placeholder="Transcription écrite de l'épisode…" />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <Label className="cursor-pointer">En vedette</Label>
-                  <p className="text-xs text-muted-foreground">Mettre cet épisode en avant.</p>
-                </div>
-                <Switch checked={form.is_featured}
-                  onCheckedChange={(v) => setForm({ ...form, is_featured: v })} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Annuler</Button>
-              <Button className="bg-primary hover:bg-primary/90" onClick={handleSubmitEpisode} disabled={submitting}>
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingSlug ? "Enregistrer" : "Créer l'épisode"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <div className="h-actions">
+          <button className="btn btn-red" onClick={openCreate}>
+            <Plus strokeWidth={2.2} />Nouvel Épisode
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Séries</CardTitle>
-            <Mic className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{podcasts.length}</div>
-            <p className="text-xs text-muted-foreground">podcasts actifs</p>
-          </CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Épisodes</CardTitle>
-            <Headphones className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalEpisodes}</div>
-            <p className="text-xs text-muted-foreground">total</p>
-          </CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Écoutes</CardTitle>
-            <BarChart3 className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalPlays.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">cette page</p>
-          </CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">En vedette</CardTitle>
-            <Heart className="h-4 w-4 text-pink-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{episodes.filter((e) => e.is_featured).length}</div>
-            <p className="text-xs text-muted-foreground">épisodes mis en avant</p>
-          </CardContent>
-        </Card>
+      <div className="kpis">
+        {kpis.map((s) => (
+          <div className="kpi" key={s.label}>
+            <div className="kpi-top">
+              <div className="kpi-ic" style={{ background: s.bg, color: s.color }}><s.icon /></div>
+              <div><div className="kpi-lb">{s.label}</div></div>
+            </div>
+            <div className="kpi-v">{s.value}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="episodes">Épisodes</TabsTrigger>
-          <TabsTrigger value="podcasts">Séries</TabsTrigger>
-        </TabsList>
+      {/* Onglets */}
+      <div className="seg">
+        <button className={activeTab === "episodes" ? "on" : ""} onClick={() => setActiveTab("episodes")}>Épisodes</button>
+        <button className={activeTab === "podcasts" ? "on" : ""} onClick={() => setActiveTab("podcasts")}>Séries</button>
+      </div>
 
-        <TabsContent value="episodes" className="mt-6 space-y-4">
-          {/* Filters */}
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Rechercher un épisode..." value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+      {/* Épisodes */}
+      {activeTab === "episodes" && (
+        <>
+          <div className="toolbar">
+            <div className="tb-search">
+              <Search />
+              <input placeholder="Rechercher un épisode..." value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
             <Select value={filterPodcast} onValueChange={setFilterPodcast}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <Mic className="mr-2 h-4 w-4" /><SelectValue placeholder="Série" />
+              <SelectTrigger className="filter w-full sm:w-[200px]">
+                <SelectValue placeholder="Série" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les séries</SelectItem>
@@ -466,130 +409,270 @@ export default function PodcastsPage() {
           </div>
 
           {loadingEpisodes ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+              <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
+            </div>
+          ) : episodes.length === 0 ? (
+            <div className="ph">
+              <div className="ph-ic"><Headphones /></div>
+              <h3>Aucun épisode trouvé</h3>
+              <p>Créez un nouvel épisode pour l{"'"}un de vos podcasts.</p>
+              <button className="btn btn-red" onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus strokeWidth={2.2} />Créer un épisode
+              </button>
             </div>
           ) : (
-            episodes.length === 0 ? (
-              <Card className="card-shadow">
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Headphones className="h-12 w-12 text-muted-foreground/50" />
-                  <h3 className="mt-4 font-semibold text-foreground">Aucun épisode trouvé</h3>
-                  <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={() => setIsCreateDialogOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />Créer un épisode
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-                {episodes.map((ep) => (
-                  <div key={ep.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
-                    <div className="relative aspect-square bg-muted">
-                      {ep.cover_url ? (
-                        <img src={ep.cover_url} alt={ep.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center"><Headphones className="h-10 w-10 text-muted-foreground/30" /></div>
-                      )}
-                      {ep.is_featured && <Badge className="absolute left-2 top-2 bg-primary text-primary-foreground text-[10px]">Featured</Badge>}
-                      <button onClick={() => togglePlay(ep)}
-                        className={cn("absolute inset-0 flex items-center justify-center transition-colors",
-                          playingId === ep.id ? "bg-black/40" : "bg-black/0 group-hover:bg-black/30")}>
-                        {playingId === ep.id
-                          ? <Pause className="h-10 w-10 text-white" />
-                          : <Play className="h-10 w-10 text-white opacity-0 transition-opacity group-hover:opacity-100" />}
-                      </button>
-                    </div>
-                    <div className="p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="truncate text-sm font-medium" title={ep.title}>{ep.title}</p>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEdit(ep)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setComments(ep)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteEpisode(ep.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span className="truncate">{ep.series_title ?? ep.series?.title ?? "—"}</span>
-                        {ep.duration && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{ep.duration}</span>}
-                        {ep.play_count > 0 && <span className="flex items-center gap-1"><Headphones className="h-3 w-3" />{ep.play_count.toLocaleString()}</span>}
-                      </div>
+            <div className="m-grid">
+              {episodes.map((ep, i) => (
+                <div className="m-card" key={ep.id}>
+                  <div className={`m-cover ${ep.cover_url ? "" : COVER_GRADIENTS[i % COVER_GRADIENTS.length]}`}>
+                    {ep.cover_url && <img src={ep.cover_url} alt={ep.title} loading="lazy" decoding="async" />}
+                    {ep.is_featured && <span className="m-tag m-sched">En vedette</span>}
+                    <button className="m-play" onClick={() => togglePlay(ep)} aria-label="Lecture">
+                      <div className="pb">{playingId === ep.id ? <Pause /> : <Play />}</div>
+                    </button>
+                  </div>
+                  <div className="m-body">
+                    <div className="m-title" title={ep.title}>{ep.title}</div>
+                    <div className="m-series">{ep.series_title ?? ep.series?.title ?? "—"}</div>
+                    <div className="m-meta">
+                      {ep.duration && <span className="mi"><Clock />{ep.duration}</span>}
+                      {ep.play_count > 0 && <span className="mi"><Headphones />{ep.play_count.toLocaleString()}</span>}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="row-act" aria-label="Actions"><MoreVertical /></button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(ep)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setComments(ep)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteEpisode(ep.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Séries */}
+      {activeTab === "podcasts" && (
+        <>
+          <div className="toolbar" style={{ justifyContent: "flex-end" }}>
+            <button className="btn btn-ghost" onClick={() => openCreateSeries}>
+              <Plus strokeWidth={2.2} />Nouvelle série
+            </button>
+          </div>
+
+          {loadingPodcasts ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+              <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
+            </div>
+          ) : podcasts.length === 0 ? (
+            <div className="ph">
+              <div className="ph-ic"><Mic /></div>
+              <h3>Aucune série</h3>
+              <p>Créez une série (podcast) pour y rattacher vos épisodes.</p>
+              <button className="btn btn-red" onClick={() => openCreateSeries}>
+                <Plus strokeWidth={2.2} />Créer une série
+              </button>
+            </div>
+          ) : (
+            <div className="m-grid">
+              {podcasts.map((podcast, i) => (
+                <div className="m-card" key={podcast.id}>
+                  <div className={`m-cover ${podcast.cover_url ? "" : COVER_GRADIENTS[i % COVER_GRADIENTS.length]}`}
+                    style={{ cursor: "pointer" }} onClick={() => viewSeriesEpisodes(podcast)}>
+                    {podcast.cover_url && <img src={podcast.cover_url} alt={podcast.title} loading="lazy" decoding="async" />}
+                    {podcast.is_featured && <span className="m-tag m-sched">En vedette</span>}
+                  </div>
+                  <div className="m-body">
+                    <div className="m-title">{podcast.title}</div>
+                    <div className="m-series">{podcast.description}</div>
+                    <div className="m-meta">
+                      <span className="mi" style={{ cursor: "pointer" }} onClick={() => viewSeriesEpisodes(podcast)}>
+                        <Headphones />{podcast.episode_count} épisodes
+                      </span>
+                      <span className="mi" style={{ textTransform: "capitalize" }}>{podcast.category}</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="row-act" aria-label="Actions"><MoreVertical /></button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => viewSeriesEpisodes(podcast)}><Headphones className="mr-2 h-4 w-4" />Voir les épisodes</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEditSeries(podcast)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteSeries(podcast)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Création / édition d'un épisode */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingSlug ? "Modifier l'Épisode" : "Ajouter un Épisode"}</DialogTitle>
+            <DialogDescription>
+              {editingSlug
+                ? "Mettez à jour les informations de l'épisode."
+                : "Créez un nouvel épisode pour l'un de vos podcasts."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Série / Podcast</Label>
+                <button type="button" onClick={() => openCreateSeries}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                  <Plus className="h-3 w-3" />Nouvelle série
+                </button>
+              </div>
+              <Select value={form.series} onValueChange={(v) => setForm({ ...form, series: v })}>
+                <SelectTrigger><SelectValue placeholder="Sélectionner un podcast" /></SelectTrigger>
+                <SelectContent>
+                  {podcasts.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Série introuvable ? Cliquez sur « Nouvelle série » pour la créer.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Label>Titre</Label>
+              <Input placeholder="Ex: Interview avec..." value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Description</Label>
+              <Textarea placeholder="Décrivez cet épisode..." rows={3} value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </div>
+            <MediaUpload
+              label="Fichier audio (upload)" context="podcast_audio" variant="audio" accept="audio/*"
+              value={form.audio_url || null} onChange={(url) => setForm({ ...form, audio_url: url ?? "" })}
+              onDuration={(d) => setForm((f) => ({ ...f, duration: d }))}
+            />
+            <div className="grid gap-2">
+              <Label>…ou coller une URL audio</Label>
+              <Input type="url" placeholder="https://… .mp3" value={form.audio_url}
+                onChange={(e) => setForm({ ...form, audio_url: e.target.value })} />
+              {form.audio_url.trim() && !isPlayableAudioUrl(form.audio_url) ? (
+                <p className="text-xs text-destructive">
+                  Lien non lisible (page/embed) — risque d&apos;erreur CORS côté client. Téléversez le fichier ou collez un lien direct .mp3/.m4a.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Un lien direct vers un fichier audio (.mp3, .m4a…) ou l&apos;upload ci-dessus. Les liens de page (SoundCloud, Spotify…) ne sont pas lisibles.
+                </p>
+              )}
+            </div>
+            <MediaUpload
+              label="Miniature" context="podcast_cover" aspect="square"
+              value={form.cover || null} onChange={(url) => setForm({ ...form, cover: url ?? "" })}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Durée</Label>
+                <Input placeholder="12:34" maxLength={10} value={form.duration}
+                  onChange={(e) => setForm({ ...form, duration: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Date de publication</Label>
+                <Input type="datetime-local" value={form.published_at}
+                  onChange={(e) => setForm({ ...form, published_at: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Saison</Label>
+                <Input type="number" min={0} placeholder="1" value={form.season_number}
+                  onChange={(e) => setForm({ ...form, season_number: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label>N° d'épisode</Label>
+                <Input type="number" min={0} placeholder="1" value={form.episode_number}
+                  onChange={(e) => setForm({ ...form, episode_number: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Invités artistes</Label>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
+                {artists.length === 0 && <p className="p-2 text-xs text-muted-foreground">Aucun artiste enregistré.</p>}
+                {artists.map((a) => (
+                  <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted">
+                    <input type="checkbox" checked={form.guests.includes(a.id)} onChange={() => toggleGuest(a.id)} />
+                    {a.name}
+                  </label>
                 ))}
               </div>
-            )
-          )}
-        </TabsContent>
 
-        <TabsContent value="podcasts" className="mt-6">
-          {loadingPodcasts ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Label className="mt-1">Invités externes (non-artistes)</Label>
+              <div className="flex gap-2">
+                <Input placeholder="Nom de l'invité…" value={guestNameInput}
+                  onChange={(e) => setGuestNameInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuestName(); } }} />
+                <Button type="button" variant="secondary" onClick={addGuestName}>Ajouter</Button>
+              </div>
+              {form.guestNames.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {form.guestNames.map((n) => (
+                    <button type="button" key={n} onClick={() => removeGuestName(n)}
+                      className="badge b-purple" style={{ cursor: "pointer" }} title="Retirer">
+                      {n} ✕
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {form.guests.length + form.guestNames.length} invité(s). Optionnel.
+              </p>
             </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {podcasts.map((podcast) => (
-                <Card key={podcast.id} className="card-shadow overflow-hidden">
-                  <div className="relative h-40 bg-muted">
-                    <img src={podcast.cover_url || "/placeholder.svg"} alt={podcast.title}
-                      loading="lazy" decoding="async"
-                      className="h-full w-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    {podcast.is_featured && (
-                      <Badge className="absolute left-3 top-3 bg-primary text-primary-foreground">En vedette</Badge>
-                    )}
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-foreground">{podcast.title}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{podcast.description}</p>
-                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Badge variant="outline">{podcast.category}</Badge>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4 text-center">
-                      <div>
-                        <div className="text-lg font-bold text-foreground">{podcast.episode_count}</div>
-                        <div className="text-xs text-muted-foreground">Épisodes</div>
-                      </div>
-                      <div>
-                        <div className="text-lg font-bold text-foreground capitalize">{podcast.category}</div>
-                        <div className="text-xs text-muted-foreground">Catégorie</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-
-              {/* Add card */}
-              <Card className="card-shadow flex items-center justify-center border-2 border-dashed min-h-[280px]">
-                <CardContent className="flex flex-col items-center py-8">
-                  <div className="rounded-full bg-primary/10 p-4">
-                    <Plus className="h-8 w-8 text-primary" />
-                  </div>
-                  <h3 className="mt-4 font-semibold text-foreground">Nouveau Podcast</h3>
-                  <Button className="mt-4 bg-primary hover:bg-primary/90"
-                    onClick={() => { setSeriesForm(EMPTY_SERIES); setSeriesDialogOpen(true); }}>
-                    Créer une série
-                  </Button>
-                </CardContent>
-              </Card>
+            <div className="grid gap-2">
+              <Label>Transcription (optionnelle)</Label>
+              <Textarea rows={3} value={form.transcript}
+                onChange={(e) => setForm({ ...form, transcript: e.target.value })}
+                placeholder="Transcription écrite de l'épisode…" />
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label className="cursor-pointer">En vedette</Label>
+                <p className="text-xs text-muted-foreground">Mettre cet épisode en avant.</p>
+              </div>
+              <Switch checked={form.is_featured}
+                onCheckedChange={(v) => setForm({ ...form, is_featured: v })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Annuler</Button>
+            <Button className="bg-primary hover:bg-primary/90" onClick={handleSubmitEpisode} disabled={submitting}>
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingSlug ? "Enregistrer" : "Créer l'épisode"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Création d'une série / podcast */}
       <Dialog open={seriesDialogOpen} onOpenChange={(o) => { if (!savingSeries) setSeriesDialogOpen(o); }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Nouvelle série</DialogTitle>
+            <DialogTitle>{editingSeriesSlug ? "Modifier la série" : "Nouvelle série"}</DialogTitle>
             <DialogDescription>
-              Créez une série (podcast) pour y rattacher vos épisodes.
+              {editingSeriesSlug
+                ? "Mettez à jour les informations de cette série."
+                : "Créez une série (podcast) pour y rattacher vos épisodes."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -630,8 +713,9 @@ export default function PodcastsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" disabled={savingSeries} onClick={() => setSeriesDialogOpen(false)}>Annuler</Button>
-            <Button className="bg-primary hover:bg-primary/90" disabled={savingSeries} onClick={handleCreateSeries}>
-              {savingSeries && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Créer la série
+            <Button className="bg-primary hover:bg-primary/90" disabled={savingSeries} onClick={handleSubmitSeries}>
+              {savingSeries && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingSeriesSlug ? "Enregistrer" : "Créer la série"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -650,6 +734,6 @@ export default function PodcastsPage() {
 
       {/* Lecteur audio (caché) — pilote la lecture des épisodes. */}
       <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
-    </div>
+    </section>
   );
 }

@@ -1,24 +1,25 @@
 import React from "react"
 import type { Metadata } from 'next'
-import { DM_Sans, JetBrains_Mono, Archivo_Black } from 'next/font/google'
+import { Inter, JetBrains_Mono, Bricolage_Grotesque } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
 import { AuthProvider } from '@/lib/auth'
 import './globals.css'
 
-const dmSans = DM_Sans({ 
+const inter = Inter({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   variable: '--font-sans'
 });
 
-const jetbrainsMono = JetBrains_Mono({ 
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: '--font-mono'
 });
 
-const archivoBlack = Archivo_Black({ 
-  weight: "400",
+const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: '--font-display'
 });
 
@@ -52,7 +53,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr">
-      <body className={`${dmSans.variable} ${jetbrainsMono.variable} ${archivoBlack.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} ${bricolage.variable} font-sans antialiased`}>
         <AuthProvider>
           {children}
         </AuthProvider>
