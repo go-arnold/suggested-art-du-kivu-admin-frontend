@@ -379,7 +379,14 @@ export const articlesApi = {
     }),
   delete: (slug: string) =>
     apiFetch<void>(`/articles/${slug}/`, { method: "DELETE" }),
-  categories: () => apiFetch<ArticleCategory[]>("/articles/categories/"),
+  // Robuste : l'endpoint peut renvoyer un tableau brut OU une réponse paginée
+  // ({results:[…]}). On normalise toujours en tableau pour ne pas casser le <Select>.
+  categories: async (): Promise<ArticleCategory[]> => {
+    const res = await apiFetch<ArticleCategory[] | PaginatedResponse<ArticleCategory>>(
+      "/articles/categories/"
+    );
+    return Array.isArray(res) ? res : (res?.results ?? []);
+  },
   tags: (params?: string) =>
     apiFetch<PaginatedResponse<ArticleTag>>(`/articles/tags/${params ? `?${params}` : ""}`),
   createTag: (name: string) =>
@@ -459,12 +466,78 @@ export interface ArtistWrite {
   };
 }
 
+// ── Médias liés à un artiste (inclus dans le détail /artists/{slug}/) ──────────
+
+export interface Genre {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+/** Une sortie (son / album / clip) rattachée à un artiste. */
+export interface ArtistRelease {
+  id: number;
+  title: string;
+  slug: string;
+  cover_url: string | null;
+  release_date: string;
+  format: string;
+  description?: string;
+  preview_url?: string | null;   // lecture (audio/vidéo courte)
+  streaming_links?: unknown;
+}
+
+/** Une vidéo rattachée à un artiste. */
+export interface ArtistVideo {
+  id: number;
+  title: string;
+  thumbnail_url: string | null;
+  video_url: string;
+  duration?: string;
+  view_count?: number;
+  published_at?: string | null;
+}
+
+/** Une photo de la galerie d'un artiste. */
+export interface ArtistPhoto {
+  id: number;
+  image_url: string;
+  caption?: string;
+  order?: number;
+}
+
+/** Détail renvoyé par GET /artists/{slug}/ — inclut les médias liés. */
+export interface ArtistDetail {
+  id: number;
+  name: string;
+  slug: string;
+  bio?: string;
+  city?: string;
+  country?: string;
+  photo_url: string | null;
+  cover_url: string | null;
+  is_featured: boolean;
+  genres?: Genre[];
+  genre_names?: string[];
+  social_links?: {
+    instagram?: string;
+    facebook?: string;
+    twitter?: string;
+    youtube?: string;
+  };
+  release_count?: number;
+  video_count?: number;
+  releases?: ArtistRelease[];
+  videos?: ArtistVideo[];
+  gallery?: ArtistPhoto[];
+}
+
 export const artistsApi = {
   list: (params?: string) =>
     apiFetch<PaginatedResponse<ArtistList>>(
       `/artists/${params ? `?${params}` : ""}`
     ),
-  get: (slug: string) => apiFetch<ArtistList>(`/artists/${slug}/`),
+  get: (slug: string) => apiFetch<ArtistDetail>(`/artists/${slug}/`),
   create: (data: ArtistWrite) =>
     apiFetch<ArtistList>("/artists/", {
       method: "POST",
@@ -477,7 +550,10 @@ export const artistsApi = {
     }),
   delete: (slug: string) =>
     apiFetch<void>(`/artists/${slug}/`, { method: "DELETE" }),
-  genres: () => apiFetch<{ id: number; name: string }[]>("/artists/genres/"),
+  genres: async (): Promise<Genre[]> => {
+    const res = await apiFetch<Genre[] | PaginatedResponse<Genre>>("/artists/genres/");
+    return Array.isArray(res) ? res : (res?.results ?? []);
+  },
 };
 
 // ─── Events ───────────────────────────────────────────────────────────────────
@@ -678,7 +754,8 @@ export interface EpisodeList {
     title: string;
     slug: string;
   };
-  guests?: (number | { id: number; name?: string })[]; // détail uniquement
+  // détail uniquement — ID d'artiste, nom libre, ou objet {id?, name?}
+  guests?: (number | string | { id?: number; name?: string })[];
   transcript?: string;     // détail uniquement
 }
 
@@ -693,7 +770,8 @@ export interface EpisodeWrite {
   season_number?: number;
   is_featured?: boolean;
   cover?: string;             // URL Cloudinary (upload via contexte podcast_cover)
-  guests?: number[];          // IDs des artistes invités
+  // Invités : ID d'artiste (number) OU nom libre (string) pour un invité non-artiste.
+  guests?: (number | string)[];
   transcript?: string;        // transcription écrite (optionnelle)
 }
 
@@ -716,11 +794,23 @@ export const podcastsApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  update: (slug: string, data: Partial<PodcastSeriesWrite>) =>
+    apiFetch<PodcastSeriesList>(`/podcasts/${slug}/`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (slug: string) =>
+    apiFetch<void>(`/podcasts/${slug}/`, { method: "DELETE" }),
 
   episodes: {
     list: (params?: string) =>
       apiFetch<PaginatedResponse<EpisodeList>>(
         `/podcasts/episodes/${params ? `?${params}` : ""}`
+      ),
+    // Épisodes d'une série précise (arborescence Série → Épisodes).
+    ofSeries: (seriesSlug: string) =>
+      apiFetch<PaginatedResponse<EpisodeList> | EpisodeList[]>(
+        `/podcasts/${seriesSlug}/episodes/`
       ),
     get: (slug: string) =>
       apiFetch<EpisodeList>(`/podcasts/episodes/${slug}/`),
@@ -738,8 +828,12 @@ export const podcastsApi = {
       apiFetch<void>(`/podcasts/episodes/${slug}/`, { method: "DELETE" }),
   },
 
-  categories: () =>
-    apiFetch<{ id: string; label: string }[]>("/podcasts/categories/"),
+  categories: async (): Promise<{ id: string; label: string }[]> => {
+    const res = await apiFetch<
+      { id: string; label: string }[] | PaginatedResponse<{ id: string; label: string }>
+    >("/podcasts/categories/");
+    return Array.isArray(res) ? res : (res?.results ?? []);
+  },
 };
 
 // ─── Releases ─────────────────────────────────────────────────────────────────
@@ -839,6 +933,7 @@ export interface VideoWrite {
   location?: string;
   is_premier?: boolean;
   thumbnail?: string;
+  artists?: number[];          // IDs des artistes associés à la vidéo
 }
 
 export const videosApi = {

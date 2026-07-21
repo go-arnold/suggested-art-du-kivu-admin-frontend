@@ -3,14 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Radio, Search, Filter, MoreHorizontal, Plus, Trash2, Loader2, Edit,
-  Play, Pause, Headphones, Copy, Clock, Mic2, Users, MessagesSquare,
+  Play, Pause, Headphones, Copy, Mic2, Users, MessagesSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -27,14 +26,11 @@ import { MediaUpload } from "@/components/admin/media-upload";
 import {
   radioApi, radioChatApi, extractStreamCreds, type RadioProgram, type RadioProgramWrite, type RadioStatus,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const STATUS_LABELS: Record<RadioStatus, string> = { live: "En direct", upcoming: "À venir", ended: "Terminé" };
-const STATUS_COLORS: Record<RadioStatus, string> = {
-  live: "bg-red-500 text-white", upcoming: "bg-blue-100 text-blue-700", ended: "bg-muted text-muted-foreground",
-};
+const STATUS_BADGE: Record<RadioStatus, string> = { live: "b-red", upcoming: "b-blue", ended: "b-gray" };
 
 const EMPTY = {
   title: "", presenter: "", description: "",
@@ -184,42 +180,53 @@ export default function RadioPage() {
   const listeners = items.reduce((a, r) => a + (r.listener_count ?? 0), 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="view">
+      {/* En-tête */}
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Radio</h1>
-          <p className="mt-1 text-muted-foreground">Grille des programmes et passage à l'antenne</p>
+          <h1>Radio</h1>
+          <p>Grille des programmes et passage à l&apos;antenne</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setChatOpen(true)} className="gap-2"><MessagesSquare className="h-4 w-4" />Chat de l&apos;antenne</Button>
-          <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Nouveau programme</Button>
+        <div className="h-actions">
+          <button className="btn btn-ghost" onClick={() => setChatOpen(true)}><MessagesSquare />Chat de l&apos;antenne</button>
+          <button className="btn btn-red" onClick={openCreate}><Plus strokeWidth={2.2} />Nouveau programme</button>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: "Programmes", value: items.length, icon: Radio, color: "text-primary" },
-          { label: "En direct", value: liveCount, icon: Mic2, color: "text-red-500" },
-          { label: "Auditeurs", value: listeners, icon: Users, color: "text-info" },
-        ].map((s) => (
-          <Card key={s.label} className="card-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-              <s.icon className={`h-4 w-4 ${s.color}`} />
-            </CardHeader>
-            <CardContent><div className="text-3xl font-bold font-mono">{loading ? "—" : s.value}</div></CardContent>
-          </Card>
-        ))}
+      {/* Stats */}
+      <div className="kpis" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--red-soft)", color: "var(--red)" }}><Radio /></div>
+            <div><div className="kpi-lb">Programmes</div></div>
+          </div>
+          <div className="kpi-v">{loading ? "—" : items.length}</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--red-soft)", color: "var(--red)" }}><Mic2 /></div>
+            <div><div className="kpi-lb">En direct</div></div>
+          </div>
+          <div className="kpi-v">{loading ? "—" : liveCount}</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><Users /></div>
+            <div><div className="kpi-lb">Auditeurs</div></div>
+          </div>
+          <div className="kpi-v">{loading ? "—" : listeners}</div>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-xl bg-card p-4 card-shadow sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher un programme…" value={search}
-            onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      {/* Barre d'outils */}
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input placeholder="Rechercher un programme…" value={search}
+            onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-[180px]"><Filter className="mr-2 h-4 w-4" /><SelectValue /></SelectTrigger>
+          <SelectTrigger className="filter"><Filter /><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les statuts</SelectItem>
             <SelectItem value="live">En direct</SelectItem>
@@ -230,59 +237,56 @@ export default function RadioPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+        <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+          <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
+        </div>
       ) : items.length === 0 ? (
-        <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12">
-          <Radio className="h-12 w-12 text-muted-foreground/50" />
-          <p className="mt-4 text-sm text-muted-foreground">Aucun programme.</p>
-        </CardContent></Card>
+        <div className="ph">
+          <div className="ph-ic"><Radio /></div>
+          <h3>Aucun programme</h3>
+          <p>Ajoutez un premier programme à la grille radio.</p>
+          <button className="btn btn-red" onClick={openCreate}><Plus strokeWidth={2.2} />Nouveau programme</button>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-          {items.map((r) => (
-            <div key={r.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
-              <div className="relative aspect-video bg-muted">
-                {r.cover_url ? (
-                  <img src={r.cover_url} alt={r.title} loading="lazy" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center"><Radio className="h-10 w-10 text-muted-foreground/30" /></div>
-                )}
-                {r.status === "live" && (
-                  <Badge className="absolute left-2 top-2 gap-1 bg-red-500 text-white">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE
-                  </Badge>
-                )}
-              </div>
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="truncate text-sm font-medium" title={r.title}>{r.title}</p>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {r.status === "live" ? (
-                        <>
-                          <DropdownMenuItem onClick={() => setWatch(r)}><Headphones className="mr-2 h-4 w-4" />Écouter le direct</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEndLive(r.id)}><Pause className="mr-2 h-4 w-4" />Arrêter l&apos;antenne</DropdownMenuItem>
-                        </>
-                      ) : (
-                        <DropdownMenuItem onClick={() => handleGoLive(r)}><Play className="mr-2 h-4 w-4" />Passer à l&apos;antenne</DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => openEdit(r)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(r.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+        <div className="panel">
+          <div className="panel-h">
+            <div><h3>Grille des programmes</h3><div className="sub">Créneaux et passage à l&apos;antenne</div></div>
+          </div>
+          <div className="sched">
+            {items.map((r) => (
+              <div className={`sched-i${r.status === "live" ? " now" : ""}`} key={r.id}>
+                <div className="sched-t">{(r.start_time ?? "").slice(0, 5)}–{(r.end_time ?? "").slice(0, 5)}</div>
+                <div className="sched-m">
+                  <div className="t">{r.title}</div>
+                  <div className="s">
+                    {r.day_name ?? DAYS[r.day_of_week] ?? ""}
+                    {r.presenter ? ` · ${r.presenter}` : ""}
+                  </div>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge className={cn("text-[10px]", STATUS_COLORS[r.status])}>{STATUS_LABELS[r.status]}</Badge>
-                  <span>{r.day_name ?? DAYS[r.day_of_week] ?? ""}</span>
-                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{(r.start_time ?? "").slice(0, 5)}–{(r.end_time ?? "").slice(0, 5)}</span>
-                  {r.presenter && <span className="flex items-center gap-1"><Mic2 className="h-3 w-3" />{r.presenter}</span>}
-                </div>
+                <span className={`badge ${STATUS_BADGE[r.status]}`}>
+                  {r.status === "live" && <span className="bd" />}{STATUS_LABELS[r.status]}
+                </span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="row-act"><MoreHorizontal /></button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {r.status === "live" ? (
+                      <>
+                        <DropdownMenuItem onClick={() => setWatch(r)}><Headphones className="mr-2 h-4 w-4" />Écouter le direct</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEndLive(r.id)}><Pause className="mr-2 h-4 w-4" />Arrêter l&apos;antenne</DropdownMenuItem>
+                      </>
+                    ) : (
+                      <DropdownMenuItem onClick={() => handleGoLive(r)}><Play className="mr-2 h-4 w-4" />Passer à l&apos;antenne</DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => openEdit(r)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(r.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -291,7 +295,7 @@ export default function RadioPage() {
         <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Modifier le programme" : "Nouveau programme"}</DialogTitle>
-            <DialogDescription>Définissez le créneau et l'animateur de l'émission radio.</DialogDescription>
+            <DialogDescription>Définissez le créneau et l&apos;animateur de l&apos;émission radio.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="space-y-1.5">
@@ -363,7 +367,7 @@ export default function RadioPage() {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><Badge className="bg-red-500 text-white">LIVE</Badge>{watch.title}</DialogTitle>
-                <DialogDescription>Diffusion en direct de l'antenne radio.</DialogDescription>
+                <DialogDescription>Diffusion en direct de l&apos;antenne radio.</DialogDescription>
               </DialogHeader>
               <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
                 {watch.playback_hls_url ? (
@@ -418,6 +422,6 @@ export default function RadioPage() {
         load={() => radioChatApi.list().then((r) => r.results.map(chatToMod))}
         remove={(mid) => radioChatApi.remove(mid)}
       />
-    </div>
+    </section>
   );
 }

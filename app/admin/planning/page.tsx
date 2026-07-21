@@ -9,12 +9,9 @@ import {
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
-  ChevronLeft, ChevronRight, CalendarDays, List as ListIcon, Search,
+  ChevronLeft, ChevronRight, CalendarDays, Search,
   Loader2, Radio, Calendar as CalendarIcon, Newspaper, Mic2, Clock, Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { eventsApi, emissionsApi, articlesApi, podcastsApi } from "@/lib/api";
@@ -35,26 +32,25 @@ interface PlanningItem {
 }
 
 interface Style {
-  dot: string;     // pastille (légende)
-  chip: string;    // fond teinté (badges icône)
-  borderL: string; // couleur de la bordure gauche (carte calendrier)
-  text: string;    // couleur du texte (heure)
+  color: string; // couleur principale (bordure gauche + texte)
+  soft: string;  // fond teinté (badges icône)
+  dot: string;   // pastille légende
   label: string;
   icon: typeof CalendarIcon;
 }
 
 // Couleurs par type (sauf article : couleur selon statut)
 const KIND_STYLE: Record<Exclude<Kind, "article">, Style> = {
-  event:    { dot: "bg-primary", chip: "bg-primary/10 text-primary", borderL: "border-l-primary", text: "text-primary", label: "Événement", icon: CalendarIcon },
-  emission: { dot: "bg-info",    chip: "bg-info/10 text-info",       borderL: "border-l-info",    text: "text-info",    label: "Émission",  icon: Radio },
-  podcast:  { dot: "bg-success", chip: "bg-success/10 text-success", borderL: "border-l-success", text: "text-success", label: "Podcast",   icon: Mic2 },
+  event:    { color: "var(--red)",     soft: "var(--red-soft)",     dot: "var(--red)",     label: "Événement", icon: CalendarIcon },
+  emission: { color: "var(--blue)",    soft: "var(--blue-soft)",    dot: "var(--blue)",    label: "Émission",  icon: Radio },
+  podcast:  { color: "var(--emerald)", soft: "var(--emerald-soft)", dot: "var(--emerald)", label: "Podcast",   icon: Mic2 },
 };
 
 // Couleurs des articles selon leur statut
 const ARTICLE_STYLE: Record<string, Style> = {
-  published: { dot: "bg-success",          chip: "bg-success/10 text-success",         borderL: "border-l-success",          text: "text-success",          label: "Article publié",    icon: Newspaper },
-  scheduled: { dot: "bg-info",             chip: "bg-info/10 text-info",               borderL: "border-l-info",             text: "text-info",             label: "Article programmé", icon: Newspaper },
-  draft:     { dot: "bg-muted-foreground", chip: "bg-muted text-muted-foreground",     borderL: "border-l-muted-foreground", text: "text-muted-foreground", label: "Brouillon",         icon: Newspaper },
+  published: { color: "var(--emerald)", soft: "var(--emerald-soft)", dot: "var(--emerald)", label: "Article publié",    icon: Newspaper },
+  scheduled: { color: "var(--blue)",    soft: "var(--blue-soft)",    dot: "var(--blue)",    label: "Article programmé", icon: Newspaper },
+  draft:     { color: "var(--t3)",      soft: "var(--surface-2)",    dot: "var(--t3)",      label: "Brouillon",         icon: Newspaper },
 };
 
 function styleFor(it: PlanningItem): Style {
@@ -64,11 +60,11 @@ function styleFor(it: PlanningItem): Style {
 
 // Calendriers filtrables (clé = type, ou article-<statut>)
 const CALENDARS: { key: string; dot: string; label: string }[] = [
-  { key: "event",             dot: "bg-primary", label: "Événements" },
-  { key: "emission",          dot: "bg-info",    label: "Émissions" },
-  { key: "podcast",           dot: "bg-success", label: "Podcasts" },
-  { key: "article-published", dot: "bg-success", label: "Articles publiés" },
-  { key: "article-scheduled", dot: "bg-info",    label: "Articles programmés" },
+  { key: "event",             dot: "var(--red)",     label: "Événements" },
+  { key: "emission",          dot: "var(--blue)",    label: "Émissions" },
+  { key: "podcast",           dot: "var(--emerald)", label: "Podcasts" },
+  { key: "article-published", dot: "var(--emerald)", label: "Articles publiés" },
+  { key: "article-scheduled", dot: "var(--blue)",    label: "Articles programmés" },
 ];
 
 function calKey(it: PlanningItem): string {
@@ -225,30 +221,28 @@ export default function PlanningPage() {
     onOpen: openItem,
   };
 
+  const VIEWS: { v: View; label: string }[] = [
+    { v: "day", label: "Jour" }, { v: "week", label: "Semaine" },
+    { v: "month", label: "Mois" }, { v: "list", label: "Liste" },
+  ];
+
   return (
-    <div className="flex h-[calc(100vh-120px)] flex-col gap-4">
+    <section className="view" style={{ display: "flex", flexDirection: "column", gap: 16, height: "calc(100vh - 120px)" }}>
       {/* Header */}
-      <div className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="page-h" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Planning Art-du-Kivu</h1>
-          <p className="text-sm capitalize text-muted-foreground">{headerLabel} · {periodCount} ce mois</p>
+          <h1>Planning Art-du-Kivu</h1>
+          <p style={{ textTransform: "capitalize" }}>{headerLabel} · {periodCount} ce mois</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 rounded-lg border border-border p-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => go(-1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-8" onClick={goToday}>Aujourd&apos;hui</Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => go(1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+        <div className="h-actions">
+          <div className="seg">
+            <button onClick={() => go(-1)} aria-label="Précédent"><ChevronLeft size={16} /></button>
+            <button onClick={goToday}>Aujourd&apos;hui</button>
+            <button onClick={() => go(1)} aria-label="Suivant"><ChevronRight size={16} /></button>
           </div>
-          <div className="flex items-center rounded-lg border border-border p-1">
-            {(["day", "week", "month", "list"] as View[]).map((v) => (
-              <Button key={v} variant={view === v ? "secondary" : "ghost"} size="sm" className="h-8 capitalize"
-                onClick={() => setView(v)}>
-                {v === "day" ? "Jour" : v === "week" ? "Semaine" : v === "month" ? "Mois" : "Liste"}
-              </Button>
+          <div className="seg">
+            {VIEWS.map(({ v, label }) => (
+              <button key={v} className={cn(view === v && "on")} onClick={() => setView(v)}>{label}</button>
             ))}
           </div>
         </div>
@@ -258,7 +252,7 @@ export default function PlanningPage() {
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[260px_1fr_300px]">
         {/* Panneau gauche */}
         <aside className="min-h-0 space-y-3 overflow-y-auto pb-1 pr-1">
-          <div className="rounded-xl bg-card p-2 card-shadow">
+          <div className="panel" style={{ padding: 8 }}>
             <Calendar
               mode="single" locale={fr} month={current} onMonthChange={setCurrent}
               selected={selectedDay} onSelect={(d) => d && setSelectedDay(d)}
@@ -269,27 +263,27 @@ export default function PlanningPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-card p-4 text-center card-shadow">
-              <p className="font-display text-2xl font-bold text-foreground">{periodCount}</p>
-              <p className="text-xs text-muted-foreground">Période</p>
+            <div className="panel" style={{ padding: 16, textAlign: "center" }}>
+              <p className="kpi-v" style={{ fontSize: 26, marginBottom: 4 }}>{periodCount}</p>
+              <p className="s" style={{ fontSize: 12, color: "var(--t3)" }}>Période</p>
             </div>
-            <div className="rounded-xl bg-primary/10 p-4 text-center card-shadow">
-              <p className="font-display text-2xl font-bold text-primary">{todayCount}</p>
-              <p className="text-xs text-muted-foreground">Aujourd&apos;hui</p>
+            <div className="panel" style={{ padding: 16, textAlign: "center", background: "var(--red-soft)" }}>
+              <p className="kpi-v" style={{ fontSize: 26, marginBottom: 4, color: "var(--red)" }}>{todayCount}</p>
+              <p className="s" style={{ fontSize: 12, color: "var(--t3)" }}>Aujourd&apos;hui</p>
             </div>
           </div>
 
-          <div className="rounded-xl bg-card p-4 card-shadow space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Recherche</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Titre…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <div className="panel" style={{ padding: 14 }}>
+            <label className="s" style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--t2)", marginBottom: 8 }}>Recherche</label>
+            <div className="tb-search">
+              <Search />
+              <input placeholder="Titre…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
           </div>
 
           {/* Calendriers = filtres cliquables */}
-          <div className="rounded-xl bg-card p-3 card-shadow">
-            <p className="mb-1 px-1 text-xs font-medium text-muted-foreground">Calendriers</p>
+          <div className="panel" style={{ padding: 12 }}>
+            <p className="s" style={{ margin: "0 4px 4px", fontSize: 12, fontWeight: 500, color: "var(--t2)" }}>Calendriers</p>
             {CALENDARS.map((c) => {
               const on = enabledCals.has(c.key);
               return (
@@ -301,7 +295,7 @@ export default function PlanningPage() {
                     !on && "opacity-40",
                   )}
                 >
-                  <span className={cn("h-2.5 w-2.5 rounded-full", c.dot)} />
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: c.dot }} />
                   <span className="flex-1 text-left">{c.label}</span>
                   {on && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
                 </button>
@@ -314,7 +308,7 @@ export default function PlanningPage() {
         </aside>
 
         {/* Panneau central */}
-        <div className="flex min-h-0 flex-col rounded-xl bg-card card-shadow overflow-hidden">
+        <div className="panel flex min-h-0 flex-col overflow-hidden">
           {loading ? (
             <div className="flex flex-1 items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -335,11 +329,13 @@ export default function PlanningPage() {
         </div>
 
         {/* Panneau droit : détail du jour */}
-        <aside className="flex min-h-0 flex-col rounded-xl bg-card card-shadow">
+        <aside className="panel flex min-h-0 flex-col">
           <div className="shrink-0 border-b border-border p-4">
-            <p className="text-2xl font-display font-bold text-foreground">{format(selectedDay, "d")}</p>
+            <p className="kpi-v" style={{ fontSize: 26, marginBottom: 2 }}>{format(selectedDay, "d")}</p>
             <p className="capitalize text-sm text-muted-foreground">{format(selectedDay, "EEEE MMMM yyyy", { locale: fr })}</p>
-            {isToday(selectedDay) && <Badge className="mt-2 bg-primary/10 text-primary">Aujourd&apos;hui</Badge>}
+            {isToday(selectedDay) && (
+              <span className="badge b-red" style={{ marginTop: 8 }}><span className="bd" />Aujourd&apos;hui</span>
+            )}
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
             {selectedItems.length === 0 ? (
@@ -352,13 +348,11 @@ export default function PlanningPage() {
                   <button
                     key={it.key}
                     onClick={() => openItem(it)}
-                    className={cn(
-                      "w-full rounded-lg border border-border border-l-[3px] bg-card p-3 text-left shadow-sm transition hover:shadow",
-                      s.borderL,
-                    )}
+                    className="kb-card w-full text-left"
+                    style={{ borderLeft: `3px solid ${s.color}`, marginBottom: 0 }}
                   >
-                    <div className={cn("flex items-center gap-2 text-xs font-medium", s.text)}>
-                      <Icon className="h-3.5 w-3.5" />{format(it.date, "HH:mm")} · {s.label}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: s.color }}>
+                      <Icon style={{ width: 14, height: 14 }} />{format(it.date, "HH:mm")} · {s.label}
                     </div>
                     <p className="mt-1 text-sm font-semibold text-foreground">{it.title}</p>
                   </button>
@@ -368,7 +362,7 @@ export default function PlanningPage() {
           </div>
         </aside>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -452,13 +446,11 @@ function DayGrid({
                         onDragStart={() => onDragStart(it)}
                         onDragEnd={onDragEnd}
                         title={it.title}
-                        className={cn(
-                          "cursor-pointer rounded-md border border-border border-l-[3px] bg-card px-2 py-1 shadow-sm transition hover:shadow active:cursor-grabbing",
-                          s.borderL, dragged?.key === it.key && "opacity-50",
-                        )}
+                        className={cn("kb-card", dragged?.key === it.key && "dragging")}
+                        style={{ borderLeft: `3px solid ${s.color}`, padding: "4px 7px", borderRadius: 7 }}
                       >
                         <p className="truncate text-xs font-semibold leading-tight">
-                          <span className={s.text}>{format(it.date, "HH:mm")}</span>{" "}
+                          <span style={{ color: s.color }}>{format(it.date, "HH:mm")}</span>{" "}
                           <span className="text-foreground">{it.title}</span>
                         </p>
                         <p className="truncate text-[10px] text-muted-foreground">{s.label}</p>
@@ -507,10 +499,11 @@ function DayAgenda({ day, items, onOpen }: { day: Date; items: PlanningItem[]; o
               <button
                 key={it.key}
                 onClick={() => onOpen(it)}
-                className={cn("flex w-full items-center gap-3 rounded-lg border border-border border-l-[3px] bg-card p-3 text-left shadow-sm transition hover:shadow", s.borderL)}
+                className="kb-card flex w-full items-center gap-3 text-left"
+                style={{ borderLeft: `3px solid ${s.color}`, marginBottom: 0 }}
               >
-                <span className={cn("w-14 shrink-0 text-sm font-mono font-medium", s.text)}>{format(it.date, "HH:mm")}</span>
-                <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", s.chip)}>
+                <span style={{ width: 56, flexShrink: 0, fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 500, color: s.color }}>{format(it.date, "HH:mm")}</span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: s.soft, color: s.color }}>
                   <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -560,16 +553,17 @@ function ListView({ items, onOpen }: { items: PlanningItem[]; onOpen: (it: Plann
                 <button
                   key={it.key}
                   onClick={() => onOpen(it)}
-                  className={cn("flex w-full items-center gap-3 rounded-lg border border-border border-l-[3px] bg-card p-3 text-left shadow-sm transition hover:shadow", s.borderL)}
+                  className="kb-card flex w-full items-center gap-3 text-left"
+                  style={{ borderLeft: `3px solid ${s.color}`, marginBottom: 0 }}
                 >
-                  <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", s.chip)}>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: s.soft, color: s.color }}>
                     <Icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{it.title}</p>
                     <p className="text-xs text-muted-foreground">{format(it.date, "HH:mm")} · {s.label}</p>
                   </div>
-                  <Badge variant="secondary" className="capitalize">{it.status}</Badge>
+                  <span className="cat" style={{ textTransform: "capitalize" }}>{it.status}</span>
                 </button>
               );
             })}

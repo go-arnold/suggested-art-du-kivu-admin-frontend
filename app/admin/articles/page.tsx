@@ -2,16 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  Search, Plus, Filter, MoreHorizontal, Eye, Pencil,
-  Trash2, ChevronLeft, ChevronRight, Loader2, MessageSquare,
+  Search, Plus, Filter, MoreVertical, Eye, Pencil, FileText,
+  Trash2, ChevronLeft, ChevronRight, Loader2, MessageSquare, Inbox,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -20,26 +16,31 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import { articlesApi, commentsApi, type ArticleList, type ArticleCategory } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
 
+const AV_COLORS = ["var(--red)", "var(--blue)", "var(--gold)", "var(--emerald)", "var(--purple)", "var(--ink)"];
+
+function initials(name?: string) {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/);
+  return (parts[0]?.[0] ?? "").concat(parts[1]?.[0] ?? "").toUpperCase() || name.slice(0, 2).toUpperCase();
+}
+
 // The API returns "published_at" but no explicit status field in the list
 // We derive display status from is_featured / published_at
 function getDisplayStatus(article: ArticleList) {
   if (!article.published_at) {
-    return { label: "Brouillon", className: "bg-muted text-muted-foreground" };
+    return { label: "Brouillon", cls: "b-gray" };
   }
   const pub = new Date(article.published_at);
   if (pub > new Date()) {
-    return { label: "Programmé", className: "bg-info/10 text-info" };
+    return { label: "Programmé", cls: "b-blue" };
   }
-  return { label: "Publié", className: "bg-success/10 text-success" };
+  return { label: "Publié", cls: "b-green" };
 }
 
 // Date display: use published_at for published, or a placeholder for drafts
@@ -118,36 +119,36 @@ export default function ArticlesPage() {
     );
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const shown = articles.length;
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Articles</h1>
-          <p className="mt-1 text-muted-foreground">Gérez vos articles et publications</p>
+          <h1>Articles</h1>
+          <p>Gérez vos articles et publications</p>
         </div>
-        <Button asChild>
-          <Link href="/admin/articles/nouveau">
-            <Plus className="mr-2 h-4 w-4" />Nouvel Article
+        <div className="h-actions">
+          <Link href="/admin/articles/nouveau" className="btn btn-red">
+            <Plus strokeWidth={2.2} />Nouvel Article
           </Link>
-        </Button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4 rounded-xl bg-card p-4 card-shadow sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher un article..."
+      {/* Toolbar */}
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input
+            placeholder="Rechercher un article…"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-            className="pl-9"
           />
         </div>
         <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[160px]">
-            <Filter className="mr-2 h-4 w-4" />
+          <SelectTrigger className="filter">
+            <Filter />
             <SelectValue placeholder="Catégorie" />
           </SelectTrigger>
           <SelectContent>
@@ -161,102 +162,98 @@ export default function ArticlesPage() {
 
       {/* Bulk Actions */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center gap-4 rounded-lg bg-primary/10 px-4 py-3">
-          <span className="text-sm font-medium">
+        <div
+          className="toolbar"
+          style={{ background: "var(--red-soft)", borderRadius: 12, padding: "10px 14px" }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--red-ink)" }}>
             {selectedIds.length} article{selectedIds.length > 1 ? "s" : ""} sélectionné{selectedIds.length > 1 ? "s" : ""}
           </span>
-          <Button size="sm" variant="destructive">Supprimer</Button>
+          <button className="btn btn-red">Supprimer</button>
         </div>
       )}
 
       {/* Table */}
-      <div className="rounded-xl bg-card card-shadow overflow-hidden">
+      <div className="tbl-wrap">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+            <Loader2 className="animate-spin" style={{ color: "var(--t3)" }} />
+          </div>
+        ) : articles.length === 0 ? (
+          <div className="ph">
+            <div className="ph-ic"><Inbox /></div>
+            <h3>Aucun article trouvé</h3>
+            <p>Aucun article ne correspond à votre recherche.</p>
+            <Link href="/admin/articles/nouveau" className="btn btn-red">
+              <Plus strokeWidth={2.2} />Nouvel Article
+            </Link>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="w-12">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th style={{ width: 44 }}>
                   <Checkbox
                     checked={articles.length > 0 && selectedIds.length === articles.length}
                     onCheckedChange={toggleSelectAll}
                   />
-                </TableHead>
-                <TableHead className="min-w-[300px]">Article</TableHead>
-                <TableHead>Auteur</TableHead>
-                <TableHead>Catégorie</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead className="text-right">Vues</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {articles.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="py-16 text-center text-muted-foreground">
-                    Aucun article trouvé
-                  </TableCell>
-                </TableRow>
-              ) : articles.map((article) => {
+                </th>
+                <th>Article</th>
+                <th>Auteur</th>
+                <th>Catégorie</th>
+                <th>Statut</th>
+                <th>Vues</th>
+                <th>Date</th>
+                <th style={{ width: 44 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {articles.map((article, i) => {
                 const status = getDisplayStatus(article);
                 return (
-                  <TableRow
+                  <tr
                     key={article.id}
                     onClick={() => router.push(`/admin/articles/${article.slug}`)}
-                    className={cn(
-                      "group cursor-pointer transition-colors",
-                      selectedIds.includes(article.id) && "bg-primary/5"
-                    )}
+                    style={{ cursor: "pointer" }}
                   >
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selectedIds.includes(article.id)}
                         onCheckedChange={() => toggleSelect(article.id)}
                       />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="relative h-12 w-20 overflow-hidden rounded-lg bg-muted">
-                          <Image
-                            src={article.featured_image_url || "/placeholder.svg"}
-                            alt={article.title}
-                            fill
-                            className="object-cover"
-                          />
+                    </td>
+                    <td>
+                      <div className="art-cell">
+                        <div className="art-thumb">
+                          {article.featured_image_url
+                            ? <img src={article.featured_image_url} alt={article.title} />
+                            : <FileText />}
                         </div>
-                        <Link
-                          href={`/admin/articles/${article.slug}`}
-                          className="font-medium hover:text-primary transition-colors line-clamp-1"
-                        >
-                          {article.title}
-                        </Link>
+                        <div>
+                          <div className="art-t">{article.title}</div>
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{article.author_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="font-normal">
-                        {getCategoryName(article.category)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={status.className}>{status.label}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-muted-foreground">
-                      {(article.view_count ?? 0).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {getDisplayDate(article)}
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    </td>
+                    <td>
+                      <div className="auth">
+                        <span className="av" style={{ background: AV_COLORS[i % AV_COLORS.length] }}>
+                          {initials(article.author_name)}
+                        </span>
+                        <span>{article.author_name}</span>
+                      </div>
+                    </td>
+                    <td><span className="cat">{getCategoryName(article.category)}</span></td>
+                    <td>
+                      <span className={cn("badge", status.cls)}>
+                        <span className="bd" />{status.label}
+                      </span>
+                    </td>
+                    <td><span className="num">{(article.view_count ?? 0).toLocaleString()}</span></td>
+                    <td><span className="muted">{getDisplayDate(article)}</span></td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
+                          <button className="row-act"><MoreVertical /></button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
@@ -281,38 +278,34 @@ export default function ArticlesPage() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 );
               })}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         )}
 
         {/* Pagination */}
         {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3">
-            <p className="text-sm text-muted-foreground">
-              Page {page} sur {totalPages} · {totalCount} articles
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
+          <div className="tbl-foot">
+            <span className="info">{shown} sur {totalCount} articles · Page {page} sur {totalPages}</span>
+            <div className="pager">
+              <button className="pg" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
+                <ChevronLeft />
+              </button>
               {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map((n) => (
-                <Button
+                <button
                   key={n}
-                  variant={page === n ? "outline" : "ghost"}
-                  size="sm"
-                  className="min-w-[40px]"
+                  className={cn("pg", page === n && "on")}
                   onClick={() => setPage(n)}
                 >
                   {n}
-                </Button>
+                </button>
               ))}
-              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+              <button className="pg" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
+                <ChevronRight />
+              </button>
             </div>
           </div>
         )}
@@ -328,6 +321,6 @@ export default function ArticlesPage() {
           remove={(cid) => commentsApi.remove("articles", comments.slug, cid)}
         />
       )}
-    </div>
+    </section>
   );
 }

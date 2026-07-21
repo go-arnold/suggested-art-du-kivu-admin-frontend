@@ -2,15 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Disc3, Search, Filter, MoreHorizontal, Plus, Trash2, Loader2, Star, Music2, Edit, MessageSquare,
+  Disc3, Search, MoreVertical, Plus, Trash2, Loader2, Star, Music2, Edit, MessageSquare, Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -27,19 +25,15 @@ import {
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const FORMAT_LABELS: Record<string, string> = {
   album: "Album", single: "Single", clip: "Clip",
   documentaire: "Documentaire", expo: "Exposition",
 };
-const FORMAT_COLORS: Record<string, string> = {
-  album: "bg-primary/10 text-primary", single: "bg-info/10 text-info",
-  clip: "bg-purple-100 text-purple-700", documentaire: "bg-warning/10 text-warning",
-  expo: "bg-pink-100 text-pink-700",
-};
 const FORMATS = Object.keys(FORMAT_LABELS) as ReleaseFormat[];
+
+const COVER_GRADIENTS = ["", "c2", "c3"];
 
 const EMPTY = {
   artist: "", title: "", format: "single" as ReleaseFormat,
@@ -147,40 +141,44 @@ export default function ReleasesPage() {
   const featuredCount = items.filter((r) => r.is_featured).length;
   const premiereCount = items.filter((r) => r.is_premiere).length;
 
+  const kpis = [
+    { label: "Sorties", value: items.length, icon: Disc3, bg: "var(--red-soft)", color: "var(--red)" },
+    { label: "À la une", value: featuredCount, icon: Star, bg: "var(--gold-soft)", color: "var(--gold)" },
+    { label: "Premières", value: premiereCount, icon: Music2, bg: "var(--purple-soft)", color: "var(--purple)" },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="view">
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Sorties</h1>
-          <p className="mt-1 text-muted-foreground">Albums, singles, clips et projets</p>
+          <h1>Sorties</h1>
+          <p>Albums, singles, clips et projets</p>
         </div>
-        <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Nouvelle sortie</Button>
+        <div className="h-actions">
+          <button className="btn btn-red" onClick={openCreate}><Plus strokeWidth={2.2} />Nouvelle sortie</button>
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: "Sorties", value: items.length, icon: Disc3, color: "text-primary" },
-          { label: "À la une", value: featuredCount, icon: Star, color: "text-warning" },
-          { label: "Premières", value: premiereCount, icon: Music2, color: "text-pink-500" },
-        ].map((s) => (
-          <Card key={s.label} className="card-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-              <s.icon className={`h-4 w-4 ${s.color}`} />
-            </CardHeader>
-            <CardContent><div className="text-3xl font-bold font-mono">{loading ? "—" : s.value}</div></CardContent>
-          </Card>
+      <div className="kpis">
+        {kpis.map((s) => (
+          <div className="kpi" key={s.label}>
+            <div className="kpi-top">
+              <div className="kpi-ic" style={{ background: s.bg, color: s.color }}><s.icon /></div>
+              <div><div className="kpi-lb">{s.label}</div></div>
+            </div>
+            <div className="kpi-v">{loading ? "—" : s.value}</div>
+          </div>
         ))}
       </div>
 
-      <div className="flex flex-col gap-4 rounded-xl bg-card p-4 card-shadow sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher une sortie…" value={search}
-            onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input placeholder="Rechercher une sortie…" value={search}
+            onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={format} onValueChange={setFormat}>
-          <SelectTrigger className="w-[180px]"><Filter className="mr-2 h-4 w-4" /><SelectValue /></SelectTrigger>
+          <SelectTrigger className="filter w-[180px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les formats</SelectItem>
             {FORMATS.map((f) => <SelectItem key={f} value={f}>{FORMAT_LABELS[f]}</SelectItem>)}
@@ -189,33 +187,33 @@ export default function ReleasesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+        <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+          <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
+        </div>
       ) : items.length === 0 ? (
-        <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12">
-          <Disc3 className="h-12 w-12 text-muted-foreground/50" />
-          <p className="mt-4 text-sm text-muted-foreground">Aucune sortie.</p>
-        </CardContent></Card>
+        <div className="ph">
+          <div className="ph-ic"><Disc3 /></div>
+          <h3>Aucune sortie</h3>
+          <p>Ajoutez un album, single, clip ou projet au catalogue.</p>
+          <button className="btn btn-red" onClick={openCreate}><Plus strokeWidth={2.2} />Nouvelle sortie</button>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-          {items.map((r) => (
-            <div key={r.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
-              <div className="relative aspect-square bg-muted">
-                {r.cover_url ? (
-                  <img src={r.cover_url} alt={r.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center"><Disc3 className="h-10 w-10 text-muted-foreground/30" /></div>
-                )}
-                {r.is_featured && <Badge className="absolute left-2 top-2 gap-1 bg-warning text-white"><Star className="h-3 w-3" />À la une</Badge>}
+        <div className="m-grid">
+          {items.map((r, i) => (
+            <div className="m-card" key={r.id}>
+              <div className={`m-cover ${r.cover_url ? "" : COVER_GRADIENTS[i % COVER_GRADIENTS.length]}`}>
+                {r.cover_url && <img src={r.cover_url} alt={r.title} loading="lazy" decoding="async" />}
+                {r.is_featured && <span className="m-tag m-sched">À la une</span>}
               </div>
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium" title={r.title}>{r.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{r.artist_name}</p>
-                  </div>
+              <div className="m-body">
+                <div className="m-title" title={r.title}>{r.title}</div>
+                <div className="m-series">{r.artist_name}</div>
+                <div className="m-meta">
+                  <span className="mi"><Disc3 />{FORMAT_LABELS[r.format] ?? r.format}</span>
+                  <span className="mi"><Calendar />{r.release_date ? new Date(r.release_date).toLocaleDateString("fr-FR", { month: "short", year: "numeric" }) : "—"}</span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                      <button className="row-act" aria-label="Actions"><MoreVertical /></button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEdit(r)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
@@ -224,11 +222,6 @@ export default function ReleasesPage() {
                       <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(r.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
-                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="secondary" className={cn("text-[10px]", FORMAT_COLORS[r.format])}>{FORMAT_LABELS[r.format] ?? r.format}</Badge>
-                  <span>·</span>
-                  <span>{r.release_date ? new Date(r.release_date).toLocaleDateString("fr-FR", { month: "short", year: "numeric" }) : "—"}</span>
                 </div>
               </div>
             </div>
@@ -315,6 +308,6 @@ export default function ReleasesPage() {
           remove={(cid) => commentsApi.remove("releases", comments.slug, cid)}
         />
       )}
-    </div>
+    </section>
   );
 }

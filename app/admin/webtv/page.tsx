@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Tv, Search, Filter, MoreHorizontal, Eye, Play, Radio, Pause, Share2,
-  Trash2, Loader2, Video, Copy, Star, Plus, MessageSquare, MessagesSquare, Edit,
+  Trash2, Loader2, Video, Copy, Star, Plus, MessageSquare, MessagesSquare, Edit, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -26,19 +25,13 @@ import {
 import { HlsPlayer } from "@/components/admin/hls-player";
 import { ModerationDialog, commentToMod, chatToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
-import { videosApi, commentsApi, chatApi, extractStreamCreds, type VideoListItem, type VideoDetail, type VideoWrite } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { videosApi, commentsApi, chatApi, extractStreamCreds, artistsApi, type VideoListItem, type VideoDetail, type VideoWrite, type ArtistList } from "@/lib/api";
 import { toast } from "sonner";
 
 // Catégories valides (enum backend CategoryFc0Enum) — ne rien ajouter d'autre.
 const CATEGORY_LABELS: Record<string, string> = {
   freestyles: "Freestyles", studio_sessions: "Studio", docs: "Documentaires",
   interviews: "Interviews", premiers: "Premières",
-};
-const CATEGORY_COLORS: Record<string, string> = {
-  freestyles: "bg-primary/10 text-primary", studio_sessions: "bg-success/10 text-success",
-  docs: "bg-warning/10 text-warning", interviews: "bg-info/10 text-info",
-  premiers: "bg-pink-100 text-pink-700",
 };
 
 // Placeholder envoyé pour une entrée « direct caméra » : le backend exige un
@@ -82,10 +75,19 @@ export default function WebTvPage() {
   const emptyForm = {
     title: "", category: "freestyles", video_url: "", description: "",
     duration: "", location: "", is_premier: false, published_at: "", thumbnail: "",
+    artists: [] as number[],
   };
   const [form, setForm] = useState(emptyForm);
   const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  // Artistes associés à la vidéo
+  const [allArtists, setAllArtists] = useState<ArtistList[]>([]);
+  useEffect(() => {
+    artistsApi.list("page_size=200&ordering=name").then((d) => setAllArtists(d.results)).catch(() => {});
+  }, []);
+  const toggleVideoArtist = (id: number) =>
+    setForm((f) => ({ ...f, artists: f.artists.includes(id) ? f.artists.filter((x) => x !== id) : [...f.artists, id] }));
 
   const fetchVideos = useCallback(async () => {
     setLoading(true);
@@ -152,6 +154,10 @@ export default function WebTvPage() {
         is_premier: !!d.is_premier,
         published_at: d.published_at ? new Date(d.published_at).toISOString().slice(0, 16) : "",
         thumbnail: d.thumbnail_url ?? "",
+        artists: (() => {
+          const raw = (d as unknown as { artists?: (number | { id: number })[] }).artists;
+          return Array.isArray(raw) ? raw.map((a) => (typeof a === "number" ? a : a.id)).filter(Boolean) : [];
+        })(),
       });
       setCreateOpen(true);
     } catch (err: unknown) {
@@ -175,6 +181,7 @@ export default function WebTvPage() {
         location: form.location.trim() || undefined,
         is_premier: form.is_premier,
         thumbnail: form.thumbnail || undefined,
+        artists: form.artists.length ? form.artists : undefined,
         published_at: form.published_at ? new Date(form.published_at).toISOString() : undefined,
       });
       const c = new Set(cameraSlugs);
@@ -267,6 +274,7 @@ export default function WebTvPage() {
         location: form.location.trim() || undefined,
         is_premier: form.is_premier,
         thumbnail: form.thumbnail || undefined,
+        artists: form.artists.length ? form.artists : undefined,
       };
       const created = await videosApi.create(payload);
       if (isCamera) { const c = new Set(cameraSlugs); c.add(created.slug); saveCamera(c); }
@@ -302,45 +310,47 @@ export default function WebTvPage() {
   const categories = Object.keys(CATEGORY_LABELS);
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Web TV</h1>
-          <p className="mt-1 text-muted-foreground">Catalogue vidéo et diffusions en direct</p>
+          <h1>Web TV</h1>
+          <p>Catalogue vidéo et diffusions en direct</p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />Nouvelle vidéo
-        </Button>
+        <div className="h-actions">
+          <button className="btn btn-red" onClick={openCreate}>
+            <Plus strokeWidth={2.2} />Nouvelle vidéo
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="kpis">
         {[
-          { label: "Vidéos", value: videos.length, icon: Video, color: "text-primary" },
-          { label: "En direct", value: liveCount, icon: Radio, color: "text-red-500" },
-          { label: "Premières", value: premierCount, icon: Star, color: "text-warning" },
+          { label: "Vidéos", value: videos.length, icon: Video, bg: "var(--red-soft)", fg: "var(--red)" },
+          { label: "En direct", value: liveCount, icon: Radio, bg: "var(--red-soft)", fg: "var(--red)" },
+          { label: "Premières", value: premierCount, icon: Star, bg: "var(--gold-soft)", fg: "var(--gold)" },
         ].map((s) => (
-          <Card key={s.label} className="card-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-              <s.icon className={`h-4 w-4 ${s.color}`} />
-            </CardHeader>
-            <CardContent><div className="text-3xl font-bold font-mono">{loading ? "—" : s.value}</div></CardContent>
-          </Card>
+          <div className="kpi" key={s.label}>
+            <div className="kpi-top">
+              <div className="kpi-ic" style={{ background: s.bg, color: s.fg }}><s.icon /></div>
+              <div><div className="kpi-lb">{s.label}</div></div>
+            </div>
+            <div className="kpi-v">{loading ? "—" : s.value}</div>
+          </div>
         ))}
       </div>
 
       {/* Filtres */}
-      <div className="flex flex-col gap-4 rounded-xl bg-card p-4 card-shadow sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher une vidéo…" value={search}
-            onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input placeholder="Rechercher une vidéo…" value={search}
+            onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="w-[180px]">
-            <Filter className="mr-2 h-4 w-4" /><SelectValue placeholder="Catégorie" />
+          <SelectTrigger className="filter">
+            <Filter /><SelectValue placeholder="Catégorie" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toutes</SelectItem>
@@ -353,38 +363,34 @@ export default function WebTvPage() {
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : videos.length === 0 ? (
-        <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12">
-          <Tv className="h-12 w-12 text-muted-foreground/50" />
-          <p className="mt-4 text-sm text-muted-foreground">Aucune vidéo.</p>
-        </CardContent></Card>
+        <div className="ph">
+          <div className="ph-ic"><Tv /></div>
+          <h3>Aucune vidéo</h3>
+          <p>Ajoutez une vidéo ou lancez une diffusion en direct pour commencer.</p>
+          <button className="btn btn-red" onClick={openCreate}><Plus strokeWidth={2.2} />Nouvelle vidéo</button>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+        <div className="m-grid">
           {videos.map((v) => (
-            <div key={v.id} className="group overflow-hidden rounded-xl bg-card card-shadow transition-all hover:shadow-lg">
-              <div className="relative aspect-video bg-muted">
-                {v.thumbnail_url ? (
-                  <img src={v.thumbnail_url} alt={v.title} loading="lazy" decoding="async"
-                    className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center"><Video className="h-10 w-10 text-muted-foreground/30" /></div>
+            <div key={v.id} className="m-card">
+              <div className="m-cover">
+                {v.thumbnail_url && (
+                  <img src={v.thumbnail_url} alt={v.title} loading="lazy" decoding="async" />
                 )}
-                {v.is_live && (
-                  <Badge className="absolute left-2 top-2 gap-1 bg-red-500 text-white">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE
-                  </Badge>
-                )}
-                <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-xs text-white">{v.duration}</span>
-                <button onClick={() => handleWatch(v)}
-                  className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
-                  <Play className="h-10 w-10 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                {v.is_live && <span className="m-tag m-live"><span className="pulse" />LIVE</span>}
+                <button className="m-play" onClick={() => handleWatch(v)}>
+                  <div className="pb"><Play /></div>
                 </button>
               </div>
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="truncate text-sm font-medium" title={v.title}>{v.title}</p>
+              <div className="m-body">
+                <div className="m-title" title={v.title}>{v.title}</div>
+                <div className="m-series">{CATEGORY_LABELS[v.category] ?? v.category}</div>
+                <div className="m-meta">
+                  <span className="mi"><Clock />{v.duration}</span>
+                  <span className="mi"><Eye />{(v.view_count ?? 0).toLocaleString()}</span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                      <button className="row-act"><MoreHorizontal /></button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleWatch(v)}><Eye className="mr-2 h-4 w-4" />Regarder</DropdownMenuItem>
@@ -403,13 +409,6 @@ export default function WebTvPage() {
                       <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(v.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="secondary" className={cn("text-[10px]", CATEGORY_COLORS[v.category])}>
-                    {CATEGORY_LABELS[v.category] ?? v.category}
-                  </Badge>
-                  <span>·</span>
-                  <span>{(v.view_count ?? 0).toLocaleString()} vues</span>
                 </div>
               </div>
             </div>
@@ -539,6 +538,19 @@ export default function WebTvPage() {
                 placeholder="Goma, RDC" />
             </div>
             <div className="space-y-1.5">
+              <Label>Artistes associés</Label>
+              <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border p-2">
+                {allArtists.length === 0 && <p className="p-2 text-xs text-muted-foreground">Aucun artiste enregistré.</p>}
+                {allArtists.map((a) => (
+                  <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted">
+                    <input type="checkbox" checked={form.artists.includes(a.id)} onChange={() => toggleVideoArtist(a.id)} />
+                    {a.name}
+                  </label>
+                ))}
+              </div>
+              {form.artists.length > 0 && <p className="text-xs text-muted-foreground">{form.artists.length} artiste(s) associé(s)</p>}
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="wt-desc">Description</Label>
               <Textarea id="wt-desc" rows={3} value={form.description}
                 onChange={(e) => setField("description", e.target.value)} placeholder="Description de la vidéo…" />
@@ -629,6 +641,6 @@ export default function WebTvPage() {
           remove={(mid) => chatApi.remove("webtv/videos", chatFor.slug, mid)}
         />
       )}
-    </div>
+    </section>
   );
 }

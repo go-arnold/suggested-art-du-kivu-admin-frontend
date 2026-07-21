@@ -154,19 +154,19 @@ export default function NewArticlePage() {
   }, [authors, user]);
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/admin/articles"><ArrowLeft className="h-5 w-5" /></Link>
-          </Button>
+      <div className="page-h">
+        <div className="flex items-center gap-3">
+          <Link href="/admin/articles" className="btn btn-ghost" style={{ padding: "0 10px" }} aria-label="Retour">
+            <ArrowLeft />
+          </Link>
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">Nouvel Article</h1>
-            <p className="text-sm text-muted-foreground">Créez un nouveau contenu pour Art-du-Kivu</p>
+            <h1>Nouvel article</h1>
+            <p>Créez un nouveau contenu pour Art-du-Kivu</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="h-actions flex-wrap">
           <Button variant="outline" size="sm" onClick={() => setIsPreviewOpen(true)}>
             <Eye className="mr-2 h-4 w-4" />Prévisualiser
           </Button>
@@ -198,7 +198,7 @@ export default function NewArticlePage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         {/* Main */}
         <div className="space-y-6">
-          <div className="rounded-xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <Input
               placeholder="Titre de l'article..."
               value={title}
@@ -215,7 +215,7 @@ export default function NewArticlePage() {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Publication */}
-          <div className="rounded-xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <h3 className="font-semibold text-foreground mb-4">Publication</h3>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -284,7 +284,7 @@ export default function NewArticlePage() {
           </div>
 
           {/* Featured Image */}
-          <div className="rounded-xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <h3 className="font-semibold text-foreground mb-4">Image à la Une</h3>
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => handleImageUpload(e.target.files?.[0])} />
@@ -309,7 +309,7 @@ export default function NewArticlePage() {
           </div>
 
           {/* Category — by ID */}
-          <div className="rounded-xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <h3 className="font-semibold text-foreground mb-4">Catégorie</h3>
             {loadingData ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
@@ -332,7 +332,7 @@ export default function NewArticlePage() {
           </div>
 
           {/* Tags */}
-          <div className="rounded-xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <h3 className="font-semibold text-foreground mb-4">Tags</h3>
             <div className="flex gap-2">
               <Input placeholder="Ajouter un tag…" value={tagInput}
@@ -353,7 +353,7 @@ export default function NewArticlePage() {
           </div>
 
           {/* Options */}
-          <div className="rounded-xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <h3 className="font-semibold text-foreground mb-4">Options</h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -403,6 +403,6 @@ export default function NewArticlePage() {
           </article>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

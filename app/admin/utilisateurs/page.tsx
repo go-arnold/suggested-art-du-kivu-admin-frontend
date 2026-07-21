@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Users, UserPlus, Search, Filter, MoreHorizontal, Mail,
+  Users, UserPlus, Search, Filter, MoreVertical, Mail,
   Shield, ShieldCheck, ShieldAlert, Activity, Edit, Trash2,
-  Ban, CheckCircle, XCircle, Eye, Download, UserCog, Loader2,
+  Ban, Eye, Download, UserCog, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -24,9 +22,6 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { usersApi, authApi, type User } from "@/lib/api";
@@ -34,25 +29,27 @@ import { toast } from "sonner";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const AV_COLORS = ["var(--red)", "var(--blue)", "var(--gold)", "var(--emerald)", "var(--purple)", "var(--ink)"];
+
 function getRoleBadge(role: User["role"]) {
   switch (role) {
     case "admin":
-      return <Badge className="bg-primary text-primary-foreground"><ShieldCheck className="mr-1 h-3 w-3" />Admin</Badge>;
+      return <span className="badge b-red"><span className="bd" />Admin</span>;
     case "editor":
-      return <Badge variant="secondary" className="bg-blue-100 text-blue-700"><Shield className="mr-1 h-3 w-3" />Éditeur</Badge>;
+      return <span className="badge b-blue"><span className="bd" />Éditeur</span>;
     case "moderator":
-      return <Badge variant="secondary" className="bg-emerald-100 text-emerald-700"><ShieldAlert className="mr-1 h-3 w-3" />Modérateur</Badge>;
+      return <span className="badge b-green"><span className="bd" />Modérateur</span>;
     case "viewer":
-      return <Badge variant="outline" className="border-amber-400 text-amber-600">Lecteur</Badge>;
+      return <span className="badge b-gold"><span className="bd" />Lecteur</span>;
     default:
-      return <Badge variant="outline">Utilisateur</Badge>;
+      return <span className="badge b-gray"><span className="bd" />Utilisateur</span>;
   }
 }
 
 function getStatusBadge(isActive: boolean) {
   return isActive
-    ? <Badge variant="outline" className="border-emerald-500 text-emerald-600"><CheckCircle className="mr-1 h-3 w-3" />Actif</Badge>
-    : <Badge variant="outline" className="border-muted-foreground text-muted-foreground"><XCircle className="mr-1 h-3 w-3" />Inactif</Badge>;
+    ? <span className="badge b-green"><span className="bd" />Actif</span>
+    : <span className="badge b-gray"><span className="bd" />Inactif</span>;
 }
 
 function timeAgo(dateString?: string) {
@@ -250,20 +247,27 @@ export default function UtilisateursPage() {
   const admins      = users.filter((u) => u.role === "admin");
   const activeUsers = users.filter((u) => u.is_active);
 
+  const stats = [
+    { label: "Total",           value: totalCount,                              icon: Users,       bg: "var(--blue-soft)",    fg: "var(--blue)" },
+    { label: "Administrateurs", value: admins.length,                           icon: ShieldCheck, bg: "var(--purple-soft)",  fg: "var(--purple)" },
+    { label: "Actifs",          value: activeUsers.length,                      icon: Activity,    bg: "var(--emerald-soft)", fg: "var(--emerald)" },
+    { label: "Inactifs",        value: users.filter((u) => !u.is_active).length, icon: Ban,        bg: "var(--red-soft)",     fg: "var(--red)" },
+  ];
+
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-h">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Utilisateurs</h1>
-          <p className="text-muted-foreground">Gérez les utilisateurs et leurs permissions</p>
+          <h1>Utilisateurs</h1>
+          <p>Gérez les utilisateurs et leurs permissions</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline"><Download className="mr-2 h-4 w-4" />Exporter</Button>
+        <div className="h-actions">
+          <button className="btn btn-ghost"><Download />Exporter</button>
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button><UserPlus className="mr-2 h-4 w-4" />Nouvel Utilisateur</Button>
+              <button className="btn btn-red"><UserPlus strokeWidth={2.2} />Nouvel Utilisateur</button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[480px]">
               <DialogHeader>
@@ -353,35 +357,28 @@ export default function UtilisateursPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: "Total",         value: totalCount,             icon: Users,       color: "text-primary" },
-          { label: "Administrateurs", value: admins.length,        icon: ShieldCheck, color: "text-primary" },
-          { label: "Actifs",        value: activeUsers.length,     icon: Activity,    color: "text-emerald-500" },
-          { label: "Inactifs",      value: users.filter(u => !u.is_active).length, icon: Ban, color: "text-destructive" },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <Card key={label} className="card-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-              <Icon className={`h-4 w-4 ${color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{value}</div>
-            </CardContent>
-          </Card>
+      <div className="kpis">
+        {stats.map(({ label, value, icon: Icon, bg, fg }) => (
+          <div className="kpi" key={label}>
+            <div className="kpi-top">
+              <div className="kpi-ic" style={{ background: bg, color: fg }}><Icon /></div>
+              <div><div className="kpi-lb">{label}</div></div>
+            </div>
+            <div className="kpi-v">{value}</div>
+          </div>
         ))}
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher un utilisateur..." value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input placeholder="Rechercher un utilisateur…" value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
         <Select value={filterRole} onValueChange={setFilterRole}>
-          <SelectTrigger className="w-full sm:w-[160px]">
-            <UserCog className="mr-2 h-4 w-4" /><SelectValue placeholder="Rôle" />
+          <SelectTrigger className="filter">
+            <UserCog /><SelectValue placeholder="Rôle" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les rôles</SelectItem>
@@ -392,8 +389,8 @@ export default function UtilisateursPage() {
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full sm:w-[160px]">
-            <Filter className="mr-2 h-4 w-4" /><SelectValue placeholder="Statut" />
+          <SelectTrigger className="filter">
+            <Filter /><SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous</SelectItem>
@@ -405,80 +402,82 @@ export default function UtilisateursPage() {
 
       {/* Bulk actions */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center gap-4 rounded-lg border bg-muted/50 p-4">
-          <span className="text-sm font-medium">{selectedIds.length} sélectionné(s)</span>
-          <Button variant="outline" size="sm"><Mail className="mr-2 h-4 w-4" />Email</Button>
+        <div
+          className="toolbar"
+          style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 12, padding: "10px 14px" }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{selectedIds.length} sélectionné(s)</span>
+          <button className="btn btn-ghost"><Mail />Email</button>
         </div>
       )}
 
       {/* Table */}
-      <Card className="card-shadow">
+      <div className="tbl-wrap">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+            <Loader2 className="animate-spin" style={{ color: "var(--t3)" }} />
+          </div>
+        ) : users.length === 0 ? (
+          <div className="ph">
+            <div className="ph-ic"><Users /></div>
+            <h3>Aucun utilisateur trouvé</h3>
+            <p>Aucun utilisateur ne correspond à votre recherche.</p>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th style={{ width: 44 }}>
                   <Checkbox
                     checked={users.length > 0 && selectedIds.length === users.length}
                     onCheckedChange={toggleSelectAll}
                   />
-                </TableHead>
-                <TableHead>Utilisateur</TableHead>
-                <TableHead>Rôle</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead>Dernière connexion</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-16 text-center text-muted-foreground">
-                    Aucun utilisateur trouvé
-                  </TableCell>
-                </TableRow>
-              ) : users.map((user) => {
+                </th>
+                <th>Utilisateur</th>
+                <th>Rôle</th>
+                <th>Statut</th>
+                <th>Dernière connexion</th>
+                <th style={{ width: 44 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user, i) => {
                 const displayName = user.username || user.email?.split("@")[0] || `#${user.id}`;
                 const initials    = displayName.slice(0, 2).toUpperCase();
 
                 return (
-                  <TableRow key={user.id}>
-                    <TableCell>
+                  <tr key={user.id}>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selectedIds.includes(user.id)}
                         onCheckedChange={() => toggleSelect(user.id)}
                       />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="bg-primary/10 text-primary font-medium">
-                            {initials}
-                          </AvatarFallback>
-                        </Avatar>
+                    </td>
+                    <td>
+                      <div className="art-cell">
+                        <span
+                          className="av"
+                          style={{ width: 36, height: 36, fontSize: 13, background: AV_COLORS[i % AV_COLORS.length] }}
+                        >
+                          {initials}
+                        </span>
                         <div>
-                          <div className="font-medium">{displayName}</div>
-                          <div className="text-sm text-muted-foreground">{user.email}</div>
+                          <div className="art-t">{displayName}</div>
+                          <div className="art-s">{user.email}</div>
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell>{getRoleBadge(user.role)}</TableCell>
-                    <TableCell>{getStatusBadge(!!user.is_active)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Activity className="h-3 w-3" />{timeAgo(user.last_login)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td>{getRoleBadge(user.role)}</td>
+                    <td>{getStatusBadge(!!user.is_active)}</td>
+                    <td>
+                      <span className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <Activity style={{ width: 13, height: 13 }} />{timeAgo(user.last_login)}
+                      </span>
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
+                          <button className="row-act"><MoreVertical /></button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setViewUser(user)}>
@@ -496,14 +495,14 @@ export default function UtilisateursPage() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 );
               })}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         )}
-      </Card>
+      </div>
 
       {/* Voir le profil */}
       <Dialog open={!!viewUser} onOpenChange={(o) => !o && setViewUser(null)}>
@@ -600,6 +599,6 @@ export default function UtilisateursPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

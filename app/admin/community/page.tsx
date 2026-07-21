@@ -10,8 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -21,19 +19,19 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   communityApi, commentsApi,
   type CommunityPost, type PostType, type Poll, type Challenge,
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const POST_LABELS: Record<PostType, string> = { talent: "Talent", art: "Art", news: "Actu" };
-const POST_COLORS: Record<PostType, string> = {
-  talent: "bg-primary/10 text-primary", art: "bg-purple-100 text-purple-700", news: "bg-info/10 text-info",
-};
+const POST_BADGE: Record<PostType, string> = { talent: "b-red", art: "b-purple", news: "b-blue" };
+
+const AV_COLORS = ["var(--red)", "var(--blue)", "var(--gold)", "var(--emerald)", "var(--purple)", "var(--ink)"];
+const initials = (name?: string | null) =>
+  ((name ?? "?").trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?");
 
 const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -153,157 +151,198 @@ export default function CommunityPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="view">
+      {/* En-tête */}
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Communauté</h1>
-          <p className="mt-1 text-muted-foreground">Posts, sondages et défis</p>
+          <h1>Communauté</h1>
+          <p>Posts, sondages et défis</p>
         </div>
-        {tab === "posts" && <Button onClick={() => setPoOpen(true)} className="gap-2"><Plus className="h-4 w-4" />Nouveau post</Button>}
-        {tab === "polls" && <Button onClick={() => setPlOpen(true)} className="gap-2"><Plus className="h-4 w-4" />Nouveau sondage</Button>}
-        {tab === "challenges" && <Button onClick={() => setChOpen(true)} className="gap-2"><Plus className="h-4 w-4" />Nouveau défi</Button>}
+        <div className="h-actions">
+          <div className="seg">
+            <button className={tab === "posts" ? "on" : ""} onClick={() => setTab("posts")}>Posts</button>
+            <button className={tab === "polls" ? "on" : ""} onClick={() => setTab("polls")}>Sondages</button>
+            <button className={tab === "challenges" ? "on" : ""} onClick={() => setTab("challenges")}>Défis</button>
+          </div>
+          {tab === "posts" && <button className="btn btn-red" onClick={() => setPoOpen(true)}><Plus strokeWidth={2.2} />Nouveau post</button>}
+          {tab === "polls" && <button className="btn btn-red" onClick={() => setPlOpen(true)}><Plus strokeWidth={2.2} />Nouveau sondage</button>}
+          {tab === "challenges" && <button className="btn btn-red" onClick={() => setChOpen(true)}><Plus strokeWidth={2.2} />Nouveau défi</button>}
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: "Posts", value: posts.length, icon: Users, color: "text-primary" },
-          { label: "Sondages", value: polls.length, icon: BarChart3, color: "text-info" },
-          { label: "Défis", value: challenges.length, icon: Trophy, color: "text-warning" },
-        ].map((s) => (
-          <Card key={s.label} className="card-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-              <s.icon className={`h-4 w-4 ${s.color}`} />
-            </CardHeader>
-            <CardContent><div className="text-3xl font-bold font-mono">{s.value}</div></CardContent>
-          </Card>
-        ))}
+      {/* Stats */}
+      <div className="kpis" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--red-soft)", color: "var(--red)" }}><Users /></div>
+            <div><div className="kpi-lb">Posts</div></div>
+          </div>
+          <div className="kpi-v">{posts.length}</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><BarChart3 /></div>
+            <div><div className="kpi-lb">Sondages</div></div>
+          </div>
+          <div className="kpi-v">{polls.length}</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--gold-soft)", color: "var(--gold)" }}><Trophy /></div>
+            <div><div className="kpi-lb">Défis</div></div>
+          </div>
+          <div className="kpi-v">{challenges.length}</div>
+        </div>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="posts">Posts</TabsTrigger>
-          <TabsTrigger value="polls">Sondages</TabsTrigger>
-          <TabsTrigger value="challenges">Défis</TabsTrigger>
-        </TabsList>
+      {/* Posts */}
+      {tab === "posts" && (
+        loadingPo ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+            <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
+          </div>
+        ) : posts.length === 0 ? (
+          <div className="ph">
+            <div className="ph-ic"><Users /></div>
+            <h3>Aucun post</h3>
+            <p>Aucun post dans la communauté pour le moment.</p>
+          </div>
+        ) : (
+          <div className="panel">
+            <div className="panel-h">
+              <div><h3>Posts</h3><div className="sub">Publications de la communauté</div></div>
+            </div>
+            <div className="panel-b">
+              {posts.map((p, i) => (
+                <div className="post" key={p.id}>
+                  <span className="av" style={{ background: AV_COLORS[i % AV_COLORS.length] }}>{initials(p.author_name)}</span>
+                  <div className="post-m">
+                    <div className="post-h">
+                      <b>{p.author_name ?? "Anonyme"}</b>
+                      <span className={`badge ${POST_BADGE[p.post_type] ?? "b-gray"}`}>{POST_LABELS[p.post_type] ?? p.post_type}</span>
+                      {p.created_at && <span className="time">{new Date(p.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>}
+                    </div>
+                    <div className="post-txt" style={{ whiteSpace: "pre-wrap" }}>{p.content}</div>
+                    <div className="post-act">
+                      <span><Heart />{p.like_count ?? 0}</span>
+                      <span><MessageCircle />{p.comment_count ?? 0}</span>
+                    </div>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="row-act"><MoreHorizontal /></button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setComments(p)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive" onClick={() => delPost(p.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      )}
 
-        {/* Posts */}
-        <TabsContent value="posts" className="mt-6">
-          {loadingPo ? (
-            <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
-          ) : posts.length === 0 ? (
-            <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12"><Users className="h-12 w-12 text-muted-foreground/50" /><p className="mt-4 text-sm text-muted-foreground">Aucun post.</p></CardContent></Card>
-          ) : (
-            <div className="space-y-3">
-              {posts.map((p) => (
-                <Card key={p.id} className="card-shadow">
-                  <CardContent className="flex gap-4 p-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{p.author_name ?? "Anonyme"}</span>
-                        <Badge variant="secondary" className={cn("text-[10px]", POST_COLORS[p.post_type])}>{POST_LABELS[p.post_type] ?? p.post_type}</Badge>
-                        {p.created_at && <span className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>}
+      {/* Sondages */}
+      {tab === "polls" && (
+        loadingPl ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+            <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
+          </div>
+        ) : polls.length === 0 ? (
+          <div className="ph">
+            <div className="ph-ic"><BarChart3 /></div>
+            <h3>Aucun sondage</h3>
+            <p>Aucun sondage n&apos;a encore été créé.</p>
+          </div>
+        ) : (
+          <div className="grid-2b">
+            {polls.map((p) => (
+              <div className="panel" key={p.id}>
+                <div className="panel-b" style={{ paddingTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span className={`badge ${p.is_active ? "b-green" : "b-gray"}`}><span className="bd" />{p.is_active ? "Actif" : "Clos"}</span>
+                        <span className="muted" style={{ fontSize: 12 }}>{p.vote_count ?? 0} votes</span>
                       </div>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-foreground line-clamp-3">{p.content}</p>
-                      <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{p.like_count ?? 0}</span>
-                        <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{p.comment_count ?? 0}</span>
-                      </div>
+                      <h3 style={{ marginTop: 6, fontFamily: "var(--disp)", fontWeight: 700, fontSize: 16, letterSpacing: "-0.3px" }}>{p.question}</h3>
                     </div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                      <DropdownMenuTrigger asChild>
+                        <button className="row-act"><MoreHorizontal /></button>
+                      </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setComments(p)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive" onClick={() => delPost(p.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onClick={() => delPoll(p.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+                  </div>
+                  {p.options && p.options.length > 0 && (
+                    <ul style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {p.options.map((o, i) => (
+                        <li key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface-2)", borderRadius: 8, padding: "7px 11px", fontSize: 13 }}>
+                          <span>{o.text ?? o.label ?? `Option ${i + 1}`}</span>
+                          <span className="muted">{o.vote_count ?? 0}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
 
-        {/* Polls */}
-        <TabsContent value="polls" className="mt-6">
-          {loadingPl ? (
-            <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
-          ) : polls.length === 0 ? (
-            <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12"><BarChart3 className="h-12 w-12 text-muted-foreground/50" /><p className="mt-4 text-sm text-muted-foreground">Aucun sondage.</p></CardContent></Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {polls.map((p) => (
-                <Card key={p.id} className="card-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Badge className={p.is_active ? "bg-success text-white" : "bg-muted text-muted-foreground"}>{p.is_active ? "Actif" : "Clos"}</Badge>
-                          <span className="text-xs text-muted-foreground">{p.vote_count ?? 0} votes</span>
-                        </div>
-                        <h3 className="mt-1 font-semibold text-foreground">{p.question}</h3>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem className="text-destructive" onClick={() => delPoll(p.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+      {/* Défis */}
+      {tab === "challenges" && (
+        loadingCh ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+            <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
+          </div>
+        ) : challenges.length === 0 ? (
+          <div className="ph">
+            <div className="ph-ic"><Trophy /></div>
+            <h3>Aucun défi</h3>
+            <p>Lancez un premier défi à la communauté.</p>
+          </div>
+        ) : (
+          <div className="ev-grid">
+            {challenges.map((c) => (
+              <div className="panel" key={c.id} style={{ overflow: "hidden" }}>
+                {c.cover_url && (
+                  <div style={{ height: 132, background: "var(--surface-2)" }}>
+                    <img src={c.cover_url} alt={c.title} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                )}
+                <div className="panel-b" style={{ paddingTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span className={`badge ${c.is_active ? "b-green" : "b-gray"}`}><span className="bd" />{c.is_active ? "Actif" : "Terminé"}</span>
+                      <h3 style={{ marginTop: 6, fontFamily: "var(--disp)", fontWeight: 700, fontSize: 16, letterSpacing: "-0.3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.title}</h3>
                     </div>
-                    {p.options && p.options.length > 0 && (
-                      <ul className="mt-2 space-y-1">
-                        {p.options.map((o, i) => (
-                          <li key={i} className="flex items-center justify-between rounded bg-muted/50 px-2 py-1 text-xs">
-                            <span>{o.text ?? o.label ?? `Option ${i + 1}`}</span>
-                            <span className="text-muted-foreground">{o.vote_count ?? 0}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Challenges */}
-        <TabsContent value="challenges" className="mt-6">
-          {loadingCh ? (
-            <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
-          ) : challenges.length === 0 ? (
-            <Card className="card-shadow"><CardContent className="flex flex-col items-center py-12"><Trophy className="h-12 w-12 text-muted-foreground/50" /><p className="mt-4 text-sm text-muted-foreground">Aucun défi.</p></CardContent></Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {challenges.map((c) => (
-                <Card key={c.id} className="card-shadow overflow-hidden">
-                  {c.cover_url && <div className="h-32 bg-muted"><img src={c.cover_url} alt={c.title} loading="lazy" className="h-full w-full object-cover" /></div>}
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <Badge className={c.is_active ? "bg-success text-white" : "bg-muted text-muted-foreground"}>{c.is_active ? "Actif" : "Terminé"}</Badge>
-                        <h3 className="mt-1 truncate font-semibold text-foreground">{c.title}</h3>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem className="text-destructive" onClick={() => delChallenge(c.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{c.description}</p>
-                    <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                      {c.prize && <span className="flex items-center gap-1"><Trophy className="h-3 w-3" />{c.prize}</span>}
-                      <span className="flex items-center gap-1"><Users className="h-3 w-3" />{c.participant_count ?? 0}</span>
-                      {c.deadline && <span>{new Date(c.deadline).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="row-act"><MoreHorizontal /></button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="text-destructive" onClick={() => delChallenge(c.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <p className="post-txt" style={{ margin: "8px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.description}</p>
+                  <div className="post-act" style={{ marginTop: 10 }}>
+                    {c.prize && <span><Trophy />{c.prize}</span>}
+                    <span><Users />{c.participant_count ?? 0}</span>
+                    {c.deadline && <span>{new Date(c.deadline).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
 
       {/* Dialog post */}
       <Dialog open={poOpen} onOpenChange={(o) => { if (!savingPo) setPoOpen(o); }}>
@@ -419,6 +458,6 @@ export default function CommunityPage() {
           remove={(cid) => commentsApi.remove("community/posts", comments.id, cid)}
         />
       )}
-    </div>
+    </section>
   );
 }

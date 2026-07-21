@@ -69,35 +69,28 @@ export default function ArticleDetailPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/admin/articles">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-          </Button>
+      <div className="page-h">
+        <div className="flex items-center gap-3">
+          <Link href="/admin/articles" className="btn btn-ghost" style={{ padding: "0 10px" }} aria-label="Retour">
+            <ArrowLeft />
+          </Link>
           <div>
-            <h1 className="font-display text-xl font-bold text-foreground">
-              Détails de l{"'"}article
-            </h1>
-            <p className="max-w-xs truncate font-mono text-xs text-muted-foreground">
-              {article.slug}
-            </p>
+            <h1 className="!text-xl truncate max-w-[60vw]">{article.title}</h1>
+            <p className="max-w-xs truncate font-mono text-xs">{article.slug}</p>
           </div>
         </div>
-        <Button asChild>
-          <Link href={`/admin/articles/${article.slug}/modifier`}>
-            <Pencil className="mr-2 h-4 w-4" />
-            Modifier l{"'"}article
+        <div className="h-actions">
+          <Link href={`/admin/articles/${article.slug}/modifier`} className="btn btn-red">
+            <Pencil />Modifier l&apos;article
           </Link>
-        </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* Article principal */}
-        <div className="rounded-2xl bg-card card-shadow overflow-hidden">
+        <div className="panel overflow-hidden">
           {/* Image à la une */}
           {article.featured_image_url && (
             <div className="aspect-video w-full overflow-hidden bg-muted">
@@ -187,7 +180,7 @@ export default function ArticleDetailPage() {
 
         {/* Sidebar : statistiques & métadonnées */}
         <div className="space-y-6">
-          <div className="rounded-2xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <h3 className="mb-4 font-semibold text-foreground">Statistiques</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-xl bg-muted/40 p-4 text-center">
@@ -207,7 +200,7 @@ export default function ArticleDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl bg-card p-6 card-shadow">
+          <div className="panel p-6">
             <h3 className="mb-4 font-semibold text-foreground">Informations</h3>
             <dl className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
@@ -248,6 +241,6 @@ export default function ArticleDetailPage() {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

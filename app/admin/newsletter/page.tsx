@@ -3,16 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Mail, Users, Search, Send, Loader2, CheckCircle, XCircle, MailCheck,
+  ChevronLeft, ChevronRight, Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
@@ -104,171 +100,192 @@ export default function NewsletterPage() {
   const confirmed = subscribers.filter((s) => s.is_confirmed).length;
 
   return (
-    <div className="space-y-6">
+    <section className="view">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-h">
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Newsletter</h1>
-          <p className="mt-1 text-muted-foreground">Gérez vos abonnés et vos campagnes</p>
+          <h1>Newsletter</h1>
+          <p>Gérez vos abonnés et vos campagnes</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button><Send className="mr-2 h-4 w-4" />Nouvelle campagne</Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
-            <DialogHeader>
-              <DialogTitle>Créer et envoyer une campagne</DialogTitle>
-              <DialogDescription>
-                Envoyée à <strong>{totalCount.toLocaleString()} abonné(s)</strong>.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Objet</Label>
-                <Input placeholder="Ex: Les nouveautés d'Art-du-Kivu" value={subject}
-                  onChange={(e) => setSubject(e.target.value)} />
+        <div className="h-actions">
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <button className="btn btn-red"><Send strokeWidth={2.2} />Nouvelle campagne</button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+              <DialogHeader>
+                <DialogTitle>Créer et envoyer une campagne</DialogTitle>
+                <DialogDescription>
+                  Envoyée à <strong>{totalCount.toLocaleString()} abonné(s)</strong>.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Objet</Label>
+                  <Input placeholder="Ex: Les nouveautés d'Art-du-Kivu" value={subject}
+                    onChange={(e) => setSubject(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contenu (HTML autorisé)</Label>
+                  <Textarea placeholder="Rédigez votre message…" rows={8} value={body}
+                    onChange={(e) => setBody(e.target.value)} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Contenu (HTML autorisé)</Label>
-                <Textarea placeholder="Rédigez votre message…" rows={8} value={body}
-                  onChange={(e) => setBody(e.target.value)} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-              <Button onClick={handleCreateAndSend} disabled={sending}>
-                {sending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Créer et envoyer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+                <Button onClick={handleCreateAndSend} disabled={sending}>
+                  {sending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Créer et envoyer
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Abonnés</CardTitle>
-            <Users className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent><div className="text-3xl font-bold font-mono">{loading ? "—" : totalCount.toLocaleString()}</div></CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Confirmés (page)</CardTitle>
-            <MailCheck className="h-4 w-4 text-success" />
-          </CardHeader>
-          <CardContent><div className="text-3xl font-bold font-mono">{loading ? "—" : confirmed}</div></CardContent>
-        </Card>
-        <Card className="card-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Campagnes</CardTitle>
-            <Mail className="h-4 w-4 text-info" />
-          </CardHeader>
-          <CardContent><div className="text-3xl font-bold font-mono">{campaigns.length}</div></CardContent>
-        </Card>
+      <div className="kpis">
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><Users /></div>
+            <div><div className="kpi-lb">Abonnés</div></div>
+          </div>
+          <div className="kpi-v">{loading ? "—" : totalCount.toLocaleString()}</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--emerald-soft)", color: "var(--emerald)" }}><MailCheck /></div>
+            <div><div className="kpi-lb">Confirmés (page)</div></div>
+          </div>
+          <div className="kpi-v">{loading ? "—" : confirmed}</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-top">
+            <div className="kpi-ic" style={{ background: "var(--gold-soft)", color: "var(--gold)" }}><Mail /></div>
+            <div><div className="kpi-lb">Campagnes</div></div>
+          </div>
+          <div className="kpi-v">{campaigns.length}</div>
+        </div>
       </div>
 
       {/* Campagnes */}
-      <Card className="card-shadow">
-        <CardHeader><CardTitle className="text-lg">Campagnes récentes</CardTitle></CardHeader>
-        <CardContent>
+      <div className="panel">
+        <div className="panel-h">
+          <div><h3>Campagnes récentes</h3></div>
+        </div>
+        <div className="panel-b">
           {campaigns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucune campagne pour le moment.</p>
+            <p className="muted" style={{ padding: "6px 0" }}>Aucune campagne pour le moment.</p>
           ) : (
-            <div className="divide-y divide-border">
-              {campaigns.map((c) => {
+            <div>
+              {campaigns.map((c, idx) => {
                 const sent = !!c.sent_at || c.status === "sent";
                 return (
-                  <div key={c.id} className="flex items-center gap-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{c.subject}</p>
-                      <p className="text-xs text-muted-foreground">
+                  <div
+                    key={c.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 16,
+                      padding: "12px 0",
+                      borderTop: idx ? "1px solid var(--line-2)" : "none",
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="art-t" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.subject}</div>
+                      <div className="art-s">
                         {c.created_by_name ? `${c.created_by_name} · ` : ""}
                         {c.recipient_count != null ? `${c.recipient_count} destinataires` : ""}
                         {c.sent_at ? ` · envoyée le ${new Date(c.sent_at).toLocaleDateString("fr-FR")}` : ""}
-                      </p>
+                      </div>
                     </div>
                     {sent ? (
-                      <Badge variant="secondary" className="bg-success/10 text-success">Envoyée</Badge>
+                      <span className="badge b-green"><span className="bd" />Envoyée</span>
                     ) : (
-                      <Button size="sm" variant="secondary" disabled={sendingId === c.id}
+                      <button className="btn btn-ghost" disabled={sendingId === c.id}
                         onClick={() => handleSendExisting(c.id)}>
                         {sendingId === c.id
-                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          : <Send className="mr-2 h-4 w-4" />}
+                          ? <Loader2 className="animate-spin" />
+                          : <Send />}
                         Envoyer
-                      </Button>
+                      </button>
                     )}
                   </div>
                 );
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Recherche abonnés */}
-      <div className="rounded-xl bg-card p-4 card-shadow">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher un abonné (email)…" value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} className="pl-9" />
+      <div className="toolbar">
+        <div className="tb-search">
+          <Search />
+          <input placeholder="Rechercher un abonné (email)…" value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} />
         </div>
       </div>
 
       {/* Table abonnés */}
-      <Card className="card-shadow">
+      <div className="tbl-wrap">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+            <Loader2 className="animate-spin" style={{ color: "var(--t3)" }} />
+          </div>
+        ) : subscribers.length === 0 ? (
+          <div className="ph">
+            <div className="ph-ic"><Inbox /></div>
+            <h3>Aucun abonné</h3>
+            <p>Aucun abonné ne correspond à votre recherche.</p>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Confirmé</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead>Inscrit le</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {subscribers.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">Aucun abonné.</TableCell></TableRow>
-              ) : subscribers.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.email}</TableCell>
-                  <TableCell>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Confirmé</th>
+                <th>Statut</th>
+                <th>Inscrit le</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subscribers.map((s) => (
+                <tr key={s.id}>
+                  <td><span className="art-t">{s.email}</span></td>
+                  <td>
                     {s.is_confirmed
-                      ? <span className="flex items-center gap-1 text-xs text-success"><CheckCircle className="h-3.5 w-3.5" />Confirmé</span>
-                      : <span className="flex items-center gap-1 text-xs text-muted-foreground"><XCircle className="h-3.5 w-3.5" />En attente</span>}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={s.is_active ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}>
-                      {s.is_active ? "Actif" : "Inactif"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {s.subscribed_at ? new Date(s.subscribed_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "—"}
-                  </TableCell>
-                </TableRow>
+                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--emerald)" }}><CheckCircle style={{ width: 14, height: 14 }} />Confirmé</span>
+                      : <span className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5 }}><XCircle style={{ width: 14, height: 14 }} />En attente</span>}
+                  </td>
+                  <td>
+                    {s.is_active
+                      ? <span className="badge b-green"><span className="bd" />Actif</span>
+                      : <span className="badge b-gray"><span className="bd" />Inactif</span>}
+                  </td>
+                  <td>
+                    <span className="muted">
+                      {s.subscribed_at ? new Date(s.subscribed_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                    </span>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         )}
 
         {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3">
-            <p className="text-sm text-muted-foreground">Page {page} / {totalPages} · {totalCount.toLocaleString()} abonnés</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Précédent</Button>
-              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Suivant</Button>
+          <div className="tbl-foot">
+            <span className="info">Page {page} sur {totalPages} · {totalCount.toLocaleString()} abonnés</span>
+            <div className="pager">
+              <button className="pg" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
+                <ChevronLeft />
+              </button>
+              <button className="pg" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
+                <ChevronRight />
+              </button>
             </div>
           </div>
         )}
-      </Card>
-    </div>
+      </div>
+    </section>
   );
 }
