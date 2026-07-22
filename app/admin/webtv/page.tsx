@@ -141,7 +141,7 @@ export default function WebTvPage() {
   const openEdit = async (item: VideoListItem) => {
     try {
       const d = await videosApi.get(item.slug);
-      const isCamera = d.video_url === CAMERA_PLACEHOLDER || cameraSlugs.has(item.slug);
+      const isCamera = d.broadcast_mode === "camera" || d.video_url === CAMERA_PLACEHOLDER || cameraSlugs.has(item.slug);
       setEditingSlug(item.slug);
       setMode(isCamera ? "camera" : "file");
       setForm({
@@ -175,7 +175,8 @@ export default function WebTvPage() {
       await videosApi.update(editingSlug, {
         title: form.title.trim(),
         category: form.category,
-        video_url: isCamera ? CAMERA_PLACEHOLDER : form.video_url.trim(),
+        broadcast_mode: isCamera ? "camera" : "playout",
+        video_url: isCamera ? undefined : form.video_url.trim(),
         description: form.description.trim() || undefined,
         duration: form.duration.trim() || undefined,
         location: form.location.trim() || undefined,
@@ -265,7 +266,8 @@ export default function WebTvPage() {
         title: form.title.trim(),
         category: form.category,
         // Direct caméra : pas de fichier → placeholder (le backend exige video_url).
-        video_url: isCamera ? CAMERA_PLACEHOLDER : form.video_url.trim(),
+        broadcast_mode: isCamera ? "camera" : "playout",
+        video_url: isCamera ? undefined : form.video_url.trim(),
         published_at: form.published_at
           ? new Date(form.published_at).toISOString()
           : new Date().toISOString(),

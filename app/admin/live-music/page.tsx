@@ -147,7 +147,7 @@ export default function LiveMusicPage() {
       toast.success("Session en direct");
       const creds = extractStreamCreds(res);
       if (creds) setLiveCreds({ title: s.title, ...creds });
-      else toast.warning("Direct démarré, mais les identifiants RTMPS n'ont pas été renvoyés (voir la console).");
+      else toast.warning("Direct démarré, mais les identifiants RTMP n'ont pas été renvoyés (voir la console).");
       console.log("go_live response (live-music):", res);
       fetchSessions();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur au démarrage"); }
@@ -477,7 +477,7 @@ export default function LiveMusicPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Identifiants RTMPS */}
+      {/* Identifiants RTMP */}
       <Dialog open={!!liveCreds} onOpenChange={(o) => !o && setLiveCreds(null)}>
         <DialogContent className="sm:max-w-[560px]">
           {liveCreds && (

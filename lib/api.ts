@@ -270,16 +270,33 @@ export interface User {
   last_name?: string;
 }
 
+export interface UserCreate {
+  email: string;
+  username: string;
+  password: string;
+  role?: User["role"];
+  first_name?: string;
+  last_name?: string;
+}
+
 export const usersApi = {
   list: (params?: string) =>
     apiFetch<PaginatedResponse<User>>(`/users/${params ? `?${params}` : ""}`),
   get: (id: number) => apiFetch<User>(`/users/${id}/`),
+  // Création admin (contourne la vérification email : is_verified=true par défaut).
+  create: (data: UserCreate) =>
+    apiFetch<User>("/users/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   update: (id: number, data: Partial<User>) =>
     apiFetch<User>(`/users/${id}/`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  // Pas de DELETE /users/{id}/ ; suppression via l'action groupée.
+  // Suppression unitaire (refuse la suppression de son propre compte : 400).
+  delete: (id: number) =>
+    apiFetch<void>(`/users/${id}/`, { method: "DELETE" }),
   bulkDelete: (ids: number[]) =>
     apiFetch<void>("/users/bulk_delete/", {
       method: "POST",
@@ -554,7 +571,49 @@ export const artistsApi = {
     const res = await apiFetch<Genre[] | PaginatedResponse<Genre>>("/artists/genres/");
     return Array.isArray(res) ? res : (res?.results ?? []);
   },
+
+  // ── Médias liés à un artiste (CRUD via sous-endpoints) ──────────────────────
+  releases: {
+    create: (slug: string, data: ArtistReleaseWrite) =>
+      apiFetch<ArtistRelease>(`/artists/${slug}/releases/`, { method: "POST", body: JSON.stringify(data) }),
+    delete: (slug: string, id: number) =>
+      apiFetch<void>(`/artists/${slug}/releases/${id}/`, { method: "DELETE" }),
+  },
+  videos: {
+    create: (slug: string, data: ArtistVideoWrite) =>
+      apiFetch<ArtistVideo>(`/artists/${slug}/videos/`, { method: "POST", body: JSON.stringify(data) }),
+    delete: (slug: string, id: number) =>
+      apiFetch<void>(`/artists/${slug}/videos/${id}/`, { method: "DELETE" }),
+  },
+  gallery: {
+    create: (slug: string, data: ArtistPhotoWrite) =>
+      apiFetch<ArtistPhoto>(`/artists/${slug}/gallery/`, { method: "POST", body: JSON.stringify(data) }),
+    delete: (slug: string, id: number) =>
+      apiFetch<void>(`/artists/${slug}/gallery/${id}/`, { method: "DELETE" }),
+  },
 };
+
+export interface ArtistReleaseWrite {
+  title: string;
+  release_date?: string;       // YYYY-MM-DD
+  format?: string;
+  cover?: string;              // URL Cloudinary (release_cover)
+  preview_url?: string;        // audio d'aperçu (release_preview) ou URL externe
+  description?: string;
+}
+
+export interface ArtistVideoWrite {
+  title: string;
+  video_url: string;           // URL Cloudinary ou externe (YouTube…)
+  thumbnail?: string;
+  duration?: string;
+}
+
+export interface ArtistPhotoWrite {
+  image: string;               // URL Cloudinary (artist_gallery_photo)
+  caption?: string;
+  order?: number;
+}
 
 // ─── Events ───────────────────────────────────────────────────────────────────
 
@@ -656,13 +715,13 @@ export interface EmissionWrite {
   cover?: string;                // URL Cloudinary (contexte upload: emission_cover)
 }
 
-/** Détail émission avec les URLs de lecture Cloudflare Stream */
+/** Détail émission avec les URLs de lecture MediaMTX */
 export interface EmissionDetail extends EmissionList {
   playback_hls_url?: string;
 }
 
 /**
- * Extrait les identifiants RTMPS d'une réponse go_live, quelle que soit la
+ * Extrait les identifiants RTMP d'une réponse go_live, quelle que soit la
  * forme des champs (le backend peut les nommer cf_rtmps_*, rtmps_*, ou les
  * imbriquer dans un objet rtmps). Renvoie null si introuvables.
  */
@@ -704,8 +763,8 @@ export const emissionsApi = {
   delete: (slug: string) =>
     apiFetch<void>(`/emissions/${slug}/`, { method: "DELETE" }),
   live: () => apiFetch<EmissionList[]>("/emissions/live/"),
-  // Démarrer / arrêter la diffusion (Cloudflare Stream). go_live renvoie les
-  // identifiants RTMPS (à afficher une seule fois pour OBS).
+  // Démarrer / arrêter la diffusion (MediaMTX). go_live renvoie les
+  // identifiants RTMP (à afficher une seule fois pour OBS).
   goLive: (slug: string) =>
     apiFetch<{ rtmp_server_url?: string; stream_key?: string; playback_hls_url?: string; status?: string; is_live?: boolean }>(
       `/emissions/${slug}/go_live/`, { method: "POST" }
@@ -716,7 +775,14 @@ export const emissionsApi = {
 
 // ─── Podcasts ─────────────────────────────────────────────────────────────────
 
-/** Shape returned by GET /podcasts/ list */
+/** Un invité d'épisode : `name` toujours affiché ; artist_id/user_id = lien cliquable optionnel. */
+export interface EpisodeGuest {
+  name: string;
+  artist_id?: number | null;
+  user_id?: number | null;
+}
+
+/** Shape returned by GET /podcasts/series/ list */
 export interface PodcastSeriesList {
   id: number;
   title: string;       // API returns "title" not "name"
@@ -726,6 +792,9 @@ export interface PodcastSeriesList {
   category: string;
   is_featured: boolean;
   episode_count: number;
+  is_series?: boolean;          // false = podcast autonome (audio porté par la série elle-même)
+  audio_url?: string | null;    // audio de la série autonome
+  duration?: string;
   // detail fields (not always present on list)
   host?: string;
   total_plays?: number;
@@ -733,19 +802,20 @@ export interface PodcastSeriesList {
   status?: "active" | "paused";
 }
 
-/** Shape returned by GET /podcasts/episodes/ list */
+/** Shape returned by GET /podcasts/episodes/ list & detail */
 export interface EpisodeList {
   id: number;
   title: string;
   slug: string;
   description: string;
   cover_url: string | null;
-  audio_url?: string | null;
+  audio_url?: string | null;    // présent sur la liste ET le détail désormais
   duration: string;
   episode_number: number;
   season_number: number;
   play_count: number;
   is_featured: boolean;
+  status?: "draft" | "published";
   published_at: string | null;
   series_title?: string;   // from list endpoint
   series_slug?: string;    // from list endpoint
@@ -754,8 +824,7 @@ export interface EpisodeList {
     title: string;
     slug: string;
   };
-  // détail uniquement — ID d'artiste, nom libre, ou objet {id?, name?}
-  guests?: (number | string | { id?: number; name?: string })[];
+  guests?: EpisodeGuest[]; // objets {name, artist_id?, user_id?}
   transcript?: string;     // détail uniquement
 }
 
@@ -763,15 +832,15 @@ export interface EpisodeWrite {
   title: string;
   series: number;
   published_at: string;       // requis par le backend (date-time ISO)
+  status?: "draft" | "published";
   description?: string;
-  audio_url?: string;         // lien du fichier audio (uri, max 200)
+  audio_url?: string;         // lien du fichier audio (uri Cloudinary ou externe)
   duration?: string;          // ex. "12:34" (max 10)
   episode_number?: number;
   season_number?: number;
   is_featured?: boolean;
   cover?: string;             // URL Cloudinary (upload via contexte podcast_cover)
-  // Invités : ID d'artiste (number) OU nom libre (string) pour un invité non-artiste.
-  guests?: (number | string)[];
+  guests?: EpisodeGuest[];    // objets structurés {name, artist_id?, user_id?}
   transcript?: string;        // transcription écrite (optionnelle)
 }
 
@@ -783,24 +852,25 @@ export interface PodcastSeriesWrite {
   is_featured?: boolean;
 }
 
+// Note : les séries podcast sont désormais sous /podcasts/series/ (les épisodes restent /podcasts/episodes/).
 export const podcastsApi = {
   list: (params?: string) =>
     apiFetch<PaginatedResponse<PodcastSeriesList>>(
-      `/podcasts/${params ? `?${params}` : ""}`
+      `/podcasts/series/${params ? `?${params}` : ""}`
     ),
-  get: (slug: string) => apiFetch<PodcastSeriesList>(`/podcasts/${slug}/`),
+  get: (slug: string) => apiFetch<PodcastSeriesList>(`/podcasts/series/${slug}/`),
   create: (data: PodcastSeriesWrite) =>
-    apiFetch<PodcastSeriesList>("/podcasts/", {
+    apiFetch<PodcastSeriesList>("/podcasts/series/", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   update: (slug: string, data: Partial<PodcastSeriesWrite>) =>
-    apiFetch<PodcastSeriesList>(`/podcasts/${slug}/`, {
+    apiFetch<PodcastSeriesList>(`/podcasts/series/${slug}/`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
   delete: (slug: string) =>
-    apiFetch<void>(`/podcasts/${slug}/`, { method: "DELETE" }),
+    apiFetch<void>(`/podcasts/series/${slug}/`, { method: "DELETE" }),
 
   episodes: {
     list: (params?: string) =>
@@ -810,7 +880,7 @@ export const podcastsApi = {
     // Épisodes d'une série précise (arborescence Série → Épisodes).
     ofSeries: (seriesSlug: string) =>
       apiFetch<PaginatedResponse<EpisodeList> | EpisodeList[]>(
-        `/podcasts/${seriesSlug}/episodes/`
+        `/podcasts/series/${seriesSlug}/episodes/`
       ),
     get: (slug: string) =>
       apiFetch<EpisodeList>(`/podcasts/episodes/${slug}/`),
@@ -831,7 +901,7 @@ export const podcastsApi = {
   categories: async (): Promise<{ id: string; label: string }[]> => {
     const res = await apiFetch<
       { id: string; label: string }[] | PaginatedResponse<{ id: string; label: string }>
-    >("/podcasts/categories/");
+    >("/podcasts/series/categories/");
     return Array.isArray(res) ? res : (res?.results ?? []);
   },
 };
@@ -897,11 +967,28 @@ export interface HomeData {
   };
 }
 
+/** Bannière d'accueil configurable (singleton, PATCH réservé au staff). */
+export interface HomeBanner {
+  image_url?: string | null;
+  title?: string;
+  subtitle?: string;
+  cta_label?: string;
+  cta_url?: string;
+}
+
 export const homeApi = {
   get: () => apiFetch<HomeData>("/home/"),
+  banner: {
+    get: () => apiFetch<HomeBanner>("/home/banner/"),
+    update: (data: Partial<HomeBanner> & { image?: string }) =>
+      apiFetch<HomeBanner>("/home/banner/", { method: "PATCH", body: JSON.stringify(data) }),
+  },
 };
 
 // ─── WebTV videos (médiathèque) ───────────────────────────────────────────────
+
+/** Mode de diffusion Web TV : vidéo pré-enregistrée vs direct caméra pur. */
+export type BroadcastMode = "playout" | "camera";
 
 export interface VideoListItem {
   id: number;
@@ -912,22 +999,26 @@ export interface VideoListItem {
   category: string;
   is_premier: boolean;
   is_live: boolean;
+  broadcast_mode?: BroadcastMode;
   location?: string;
   view_count: number;
   published_at: string | null;
+  artist_names?: string[];
 }
 
 export interface VideoDetail extends VideoListItem {
   description?: string;
   video_url?: string;
   playback_hls_url?: string;
+  artists?: (number | { id: number; name?: string })[];
 }
 
 export interface VideoWrite {
   title: string;
-  video_url: string;
+  video_url?: string;          // facultatif en mode camera (video_url vide)
   category: string;
   published_at: string;
+  broadcast_mode?: BroadcastMode;
   description?: string;
   duration?: string;
   location?: string;
@@ -1197,7 +1288,13 @@ export const liveMusicApi = {
 
 // ─── Community ────────────────────────────────────────────────────────────────
 
-export type PostType = "talent" | "art" | "news";
+export type PostType = "talent" | "art" | "news" | "challenge_response";
+
+/** Un média attaché à un post communauté (fichier déjà téléversé sur Cloudinary). */
+export interface MediaItem {
+  type: "song" | "video" | "image";
+  url: string;
+}
 
 export interface CommunityPost {
   id: number;
@@ -1205,7 +1302,7 @@ export interface CommunityPost {
   author_avatar?: string | null;
   title?: string;
   content: string;
-  media?: string | null;
+  media?: string | MediaItem[] | null;
   post_type: PostType;
   like_count?: number;
   comment_count?: string | number;
@@ -1215,6 +1312,8 @@ export interface CommunityPost {
 export interface CommunityPostWrite {
   content: string;             // requis (max 2000)
   post_type: PostType;         // requis
+  title?: string;              // titre descriptif (désormais accepté)
+  media?: MediaItem[];         // 1..n médias {type: song|video|image, url}
 }
 
 export interface PollOption {

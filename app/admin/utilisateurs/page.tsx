@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { usersApi, authApi, type User } from "@/lib/api";
+import { usersApi, type User } from "@/lib/api";
 import { toast } from "sonner";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -135,22 +135,14 @@ export default function UtilisateursPage() {
 
     setCreating(true);
     try {
-      await authApi.register({ username, email, password1, password2, first_name, last_name });
+      // Création admin : compte vérifié directement, avec le rôle choisi (pas d'email de confirmation).
+      await usersApi.create({ email, username, password: password1, role, first_name, last_name });
       toast.success(`Compte créé pour ${first_name} ${last_name}`);
       setDialogOpen(false);
       setForm(EMPTY_FORM);
       fetchUsers();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("server_error") || msg.includes("500")) {
-        // Backend 500 = email config issue, account usually created
-        toast.success("Compte créé (email de confirmation non envoyé)");
-        setDialogOpen(false);
-        setForm(EMPTY_FORM);
-        fetchUsers();
-      } else {
-        toast.error(msg || "Erreur lors de la création");
-      }
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la création");
     } finally {
       setCreating(false);
     }
@@ -225,11 +217,11 @@ export default function UtilisateursPage() {
     window.location.href = `mailto:${user.email}`;
   };
 
-  // ── Suppression (via l'action groupée : pas de DELETE /users/{id}/) ────────
+  // ── Suppression unitaire (DELETE /users/{id}/ ; refuse son propre compte) ──
   const handleDelete = async (user: User) => {
     if (!confirm(`Supprimer l'utilisateur ${user.username || user.email} ?`)) return;
     try {
-      await usersApi.bulkDelete([user.id]);
+      await usersApi.delete(user.id);
       toast.success("Utilisateur supprimé");
       fetchUsers();
     } catch (err: unknown) {

@@ -24,7 +24,7 @@ import {
 import {
   podcastsApi, commentsApi, artistsApi,
   type PodcastSeriesList, type EpisodeList, type EpisodeWrite,
-  type PodcastSeriesWrite, type ArtistList,
+  type PodcastSeriesWrite, type ArtistList, type EpisodeGuest,
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
@@ -266,10 +266,8 @@ export default function PodcastsPage() {
       const guestIds: number[] = [];
       const guestNames: string[] = [];
       for (const g of d.guests ?? []) {
-        if (typeof g === "number") guestIds.push(g);
-        else if (typeof g === "string") guestNames.push(g);
-        else if (g && typeof g.id === "number") guestIds.push(g.id);
-        else if (g && g.name) guestNames.push(g.name);
+        if (g.artist_id) guestIds.push(g.artist_id);
+        else if (g.name) guestNames.push(g.name);
       }
       setForm((f) => ({ ...f, guests: guestIds, guestNames, transcript: d.transcript ?? "", audio_url: d.audio_url ?? f.audio_url }));
     }).catch(() => { /* on garde les valeurs de la liste */ });
@@ -284,8 +282,15 @@ export default function PodcastsPage() {
     }
     setSubmitting(true);
     try {
-      // Invités : IDs d'artistes + noms libres d'invités non-artistes.
-      const guests: (number | string)[] = [...form.guests, ...form.guestNames];
+      // Invités : format objet {name, artist_id?}. Artistes → lien via artist_id ;
+      // invités externes → simple nom libre.
+      const guests: EpisodeGuest[] = [
+        ...form.guests.map((id) => {
+          const a = artists.find((x) => x.id === id);
+          return { name: a?.name ?? `Artiste #${id}`, artist_id: id };
+        }),
+        ...form.guestNames.map((name) => ({ name })),
+      ];
       // Champs communs (création + édition)
       const common: Partial<EpisodeWrite> = {
         title: form.title.trim(),

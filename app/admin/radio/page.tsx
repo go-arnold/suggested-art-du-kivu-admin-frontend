@@ -147,7 +147,7 @@ export default function RadioPage() {
       toast.success("Passage à l'antenne démarré");
       const creds = extractStreamCreds(res);
       if (creds) setLiveCreds({ title: r.title, ...creds });
-      else toast.warning("Antenne démarrée, mais les identifiants RTMPS n'ont pas été renvoyés (voir la console).");
+      else toast.warning("Antenne démarrée, mais les identifiants RTMP n'ont pas été renvoyés (voir la console).");
       console.log("go_live response (radio):", res);
       fetch();
     } catch (err: unknown) {
@@ -382,7 +382,7 @@ export default function RadioPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Identifiants RTMPS */}
+      {/* Identifiants RTMP */}
       <Dialog open={!!liveCreds} onOpenChange={(o) => !o && setLiveCreds(null)}>
         <DialogContent className="sm:max-w-[560px]">
           {liveCreds && (

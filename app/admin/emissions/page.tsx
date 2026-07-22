@@ -183,13 +183,13 @@ export default function EmissionsPage() {
     }
   };
 
-  // Démarrer / arrêter une diffusion via les actions dédiées (Cloudflare Stream).
+  // Démarrer / arrêter une diffusion via les actions dédiées (MediaMTX).
   const handleGoLive = async (show: EmissionList) => {
     try {
       const res = await emissionsApi.goLive(show.slug);
       const creds = extractStreamCreds(res);
       if (creds) setLiveCreds({ title: show.title, ...creds });
-      else toast.warning("Direct démarré, mais le backend n'a pas renvoyé les identifiants RTMPS (voir la console / la réponse go_live).");
+      else toast.warning("Direct démarré, mais le backend n'a pas renvoyé les identifiants RTMP (voir la console / la réponse go_live).");
       // Diagnostic : trace la réponse pour identifier les champs si besoin.
       console.log("go_live response (emissions):", res);
       // Barre de lecture live globale (avec le flux HLS dès qu'il est disponible).

@@ -21,13 +21,21 @@ import {
 } from "@/components/ui/dialog";
 import {
   communityApi, commentsApi,
-  type CommunityPost, type PostType, type Poll, type Challenge,
+  type CommunityPost, type PostType, type Poll, type Challenge, type MediaItem,
 } from "@/lib/api";
+import { MediaUpload } from "@/components/admin/media-upload";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { toast } from "sonner";
 
-const POST_LABELS: Record<PostType, string> = { talent: "Talent", art: "Art", news: "Actu" };
-const POST_BADGE: Record<PostType, string> = { talent: "b-red", art: "b-purple", news: "b-blue" };
+const POST_LABELS: Record<PostType, string> = { talent: "Talent", art: "Art", news: "Actu", challenge_response: "Défi" };
+const POST_BADGE: Record<PostType, string> = { talent: "b-red", art: "b-purple", news: "b-blue", challenge_response: "b-gold" };
+
+// Contexte d'upload Cloudinary selon le type de média communauté.
+const MEDIA_CTX: Record<MediaItem["type"], { context: string; accept: string }> = {
+  song: { context: "community_song", accept: "audio/*" },
+  video: { context: "community_video", accept: "video/*" },
+  image: { context: "community_image", accept: "image/*" },
+};
 
 const AV_COLORS = ["var(--red)", "var(--blue)", "var(--gold)", "var(--emerald)", "var(--purple)", "var(--ink)"];
 const initials = (name?: string | null) =>
@@ -45,7 +53,7 @@ export default function CommunityPage() {
   const [loadingPo, setLoadingPo] = useState(true);
   const [poOpen, setPoOpen] = useState(false);
   const [savingPo, setSavingPo] = useState(false);
-  const [poForm, setPoForm] = useState<{ content: string; post_type: PostType }>({ content: "", post_type: "news" });
+  const [poForm, setPoForm] = useState<{ title: string; content: string; post_type: PostType; mediaType: MediaItem["type"]; mediaUrl: string }>({ title: "", content: "", post_type: "news", mediaType: "image", mediaUrl: "" });
   const [comments, setComments] = useState<CommunityPost | null>(null);
 
   // Polls
@@ -85,10 +93,21 @@ export default function CommunityPage() {
   // ── Posts ──
   const submitPost = async () => {
     if (!poForm.content.trim()) { toast.error("Le contenu est obligatoire"); return; }
+    if ((poForm.post_type === "talent" || poForm.post_type === "art") && !poForm.title.trim()) {
+      toast.error("Le titre est obligatoire pour ce type de post"); return;
+    }
     setSavingPo(true);
     try {
-      await communityApi.posts.create({ content: poForm.content.trim(), post_type: poForm.post_type });
-      toast.success("Post créé"); setPoOpen(false); setPoForm({ content: "", post_type: "news" }); fetchPosts();
+      await communityApi.posts.create({
+        content: poForm.content.trim(),
+        post_type: poForm.post_type,
+        title: poForm.title.trim() || undefined,
+        media: poForm.mediaUrl ? [{ type: poForm.mediaType, url: poForm.mediaUrl }] : undefined,
+      });
+      toast.success("Post créé");
+      setPoOpen(false);
+      setPoForm({ title: "", content: "", post_type: "news", mediaType: "image", mediaUrl: "" });
+      fetchPosts();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur"); }
     finally { setSavingPo(false); }
   };
@@ -361,8 +380,32 @@ export default function CommunityPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label>Titre {(poForm.post_type === "talent" || poForm.post_type === "art") ? "*" : "(optionnel)"}</Label>
+              <Input value={poForm.title} onChange={(e) => setPoForm({ ...poForm, title: e.target.value })} placeholder="Titre du post" />
+            </div>
+            <div className="space-y-1.5">
               <Label>Contenu * <span className="text-xs text-muted-foreground">({poForm.content.length}/2000)</span></Label>
               <Textarea rows={5} maxLength={2000} value={poForm.content} onChange={(e) => setPoForm({ ...poForm, content: e.target.value })} placeholder="Que voulez-vous partager ?" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Média (optionnel)</Label>
+              <Select value={poForm.mediaType} onValueChange={(v) => setPoForm({ ...poForm, mediaType: v as MediaItem["type"], mediaUrl: "" })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="image">Image</SelectItem>
+                  <SelectItem value="video">Vidéo</SelectItem>
+                  <SelectItem value="song">Audio</SelectItem>
+                </SelectContent>
+              </Select>
+              <MediaUpload
+                label=""
+                context={MEDIA_CTX[poForm.mediaType].context}
+                accept={MEDIA_CTX[poForm.mediaType].accept}
+                variant={poForm.mediaType === "song" ? "audio" : undefined}
+                aspect={poForm.mediaType === "image" ? "square" : "video"}
+                value={poForm.mediaUrl || null}
+                onChange={(url) => setPoForm({ ...poForm, mediaUrl: url ?? "" })}
+              />
             </div>
           </div>
           <DialogFooter>
