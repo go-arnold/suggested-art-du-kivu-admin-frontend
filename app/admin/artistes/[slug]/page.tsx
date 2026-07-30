@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Pencil, Loader2, MapPin, Star, Music, Video, Image as ImageIcon,
-  Instagram, Facebook, Twitter, Youtube, Play, Pause, Eye, Plus, Trash2,
+  Instagram, Facebook, Twitter, Youtube, Play, Pause, Eye, Plus, Trash2, MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,8 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
-import { artistsApi, type ArtistDetail, type ArtistVideo, type ArtistPhoto } from "@/lib/api";
+import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
+import { artistsApi, commentsApi, type ArtistDetail, type ArtistVideo, type ArtistPhoto } from "@/lib/api";
 import { toast } from "sonner";
 
 const SOCIAL = [
@@ -41,6 +42,7 @@ export default function ArtistDetailPage() {
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [video, setVideo] = useState<ArtistVideo | null>(null);
   const [photo, setPhoto] = useState<ArtistPhoto | null>(null);
+  const [showComments, setShowComments] = useState(false);
 
   // Ajout de média
   const [addType, setAddType] = useState<AddType>(null);
@@ -150,6 +152,9 @@ export default function ArtistDetailPage() {
           </div>
         </div>
         <div className="h-actions">
+          <button className="btn btn-ghost" onClick={() => setShowComments(true)}>
+            <MessageSquare />Commentaires
+          </button>
           <Link href={`/admin/artistes/${artist.slug}/modifier`} className="btn btn-red">
             <Pencil />Modifier
           </Link>
@@ -406,7 +411,7 @@ export default function ArtistDetailPage() {
                   <Label>Durée</Label>
                   <Input value={media.duration} onChange={(e) => setMedia({ ...media, duration: e.target.value })} placeholder="3:45" maxLength={10} />
                 </div>
-                <MediaUpload label="Miniature" context="webtv_thumbnail" aspect="video"
+                <MediaUpload label="Miniature" context="artist_gallery_photo" aspect="video"
                   value={media.thumbnail || null} onChange={(url) => setMedia({ ...media, thumbnail: url ?? "" })} />
               </>
             )}
@@ -431,6 +436,17 @@ export default function ArtistDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modération des commentaires */}
+      {showComments && (
+        <ModerationDialog
+          open onOpenChange={setShowComments}
+          title={`Commentaires — ${artist.name}`}
+          emptyLabel="Aucun commentaire sur cet artiste."
+          load={() => commentsApi.list("artists", artist.slug).then((r) => r.results.map(commentToMod))}
+          remove={(cid) => commentsApi.remove("artists", artist.slug, cid)}
+        />
+      )}
     </section>
   );
 }

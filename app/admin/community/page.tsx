@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Trash2, Loader2, MoreHorizontal, Heart, MessageCircle,
-  BarChart3, Trophy, X, MessageSquare,
+  BarChart3, Trophy, X, MessageSquare, Pin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,13 @@ export default function CommunityPage() {
   const [chOpen, setChOpen] = useState(false);
   const [savingCh, setSavingCh] = useState(false);
   const [chForm, setChForm] = useState({ title: "", description: "", prize: "", deadline: "", is_active: true });
+
+  // Résultat épinglé d'un défi (POST .../publish_result/, réservé au staff).
+  const [resultFor, setResultFor] = useState<Challenge | null>(null);
+  const [savingResult, setSavingResult] = useState(false);
+  const [resultForm, setResultForm] = useState<{ title: string; content: string; mediaType: MediaItem["type"]; mediaUrl: string }>({
+    title: "", content: "", mediaType: "image", mediaUrl: "",
+  });
 
   const fetchPosts = useCallback(async () => {
     setLoadingPo(true);
@@ -167,6 +174,27 @@ export default function CommunityPage() {
     if (!confirm("Supprimer ce défi ?")) return;
     try { await communityApi.challenges.delete(slug); toast.success("Défi supprimé"); fetchChallenges(); }
     catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur"); }
+  };
+
+  const openPublishResult = (c: Challenge) => {
+    setResultFor(c);
+    setResultForm({ title: "", content: "", mediaType: "image", mediaUrl: "" });
+  };
+  const submitResult = async () => {
+    if (!resultFor) return;
+    if (!resultForm.title.trim() || !resultForm.content.trim()) { toast.error("Titre et contenu sont obligatoires"); return; }
+    setSavingResult(true);
+    try {
+      await communityApi.challenges.publishResult(resultFor.slug, {
+        title: resultForm.title.trim(),
+        content: resultForm.content.trim(),
+        media: resultForm.mediaUrl ? [{ type: resultForm.mediaType, url: resultForm.mediaUrl }] : undefined,
+      });
+      toast.success("Résultat publié et épinglé en tête des participations");
+      setResultFor(null);
+      fetchPosts();
+    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur"); }
+    finally { setSavingResult(false); }
   };
 
   return (
@@ -346,6 +374,7 @@ export default function CommunityPage() {
                         <button className="row-act"><MoreHorizontal /></button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openPublishResult(c)}><Pin className="mr-2 h-4 w-4" />Publier le résultat</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive" onClick={() => delChallenge(c.slug)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -487,6 +516,52 @@ export default function CommunityPage() {
           <DialogFooter>
             <Button variant="outline" disabled={savingCh} onClick={() => setChOpen(false)}>Annuler</Button>
             <Button disabled={savingCh} onClick={submitChallenge}>{savingCh && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Créer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog résultat épinglé d'un défi */}
+      <Dialog open={!!resultFor} onOpenChange={(o) => { if (!savingResult && !o) setResultFor(null); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Publier le résultat — {resultFor?.title}</DialogTitle>
+            <DialogDescription>
+              Ce post sera épinglé en tête des participations de ce défi (<code>is_pinned_result</code>).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Titre *</Label>
+              <Input value={resultForm.title} onChange={(e) => setResultForm({ ...resultForm, title: e.target.value })} placeholder="Ex: Le gagnant est..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contenu * <span className="text-xs text-muted-foreground">({resultForm.content.length}/2000)</span></Label>
+              <Textarea rows={4} maxLength={2000} value={resultForm.content} onChange={(e) => setResultForm({ ...resultForm, content: e.target.value })} placeholder="Annonce du résultat…" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Média (optionnel)</Label>
+              <Select value={resultForm.mediaType} onValueChange={(v) => setResultForm({ ...resultForm, mediaType: v as MediaItem["type"], mediaUrl: "" })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="image">Image</SelectItem>
+                  <SelectItem value="video">Vidéo</SelectItem>
+                  <SelectItem value="song">Audio</SelectItem>
+                </SelectContent>
+              </Select>
+              <MediaUpload
+                label=""
+                context={MEDIA_CTX[resultForm.mediaType].context}
+                accept={MEDIA_CTX[resultForm.mediaType].accept}
+                variant={resultForm.mediaType === "song" ? "audio" : undefined}
+                aspect={resultForm.mediaType === "image" ? "square" : "video"}
+                value={resultForm.mediaUrl || null}
+                onChange={(url) => setResultForm({ ...resultForm, mediaUrl: url ?? "" })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={savingResult} onClick={() => setResultFor(null)}>Annuler</Button>
+            <Button disabled={savingResult} onClick={submitResult}>{savingResult && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Publier et épingler</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

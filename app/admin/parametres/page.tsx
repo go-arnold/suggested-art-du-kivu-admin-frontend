@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Settings, Palette, Shield, Bell, Mail, Save, Upload, Globe, Loader2,
+  Settings, Palette, Shield, Bell, Mail, Save, Upload, Globe,
 } from "lucide-react";
-import { homeApi, type HomeBanner } from "@/lib/api";
 import { toast } from "sonner";
 
 // ── Toggle (switch design-system) ────────────────────────────────────────────────
@@ -26,30 +25,6 @@ const NAV = [
 
 export default function ParametresPage() {
   const [activeTab, setActiveTab] = useState("general");
-
-  // Bannière d'accueil (seule section réellement persistée pour l'instant).
-  const [banner, setBanner] = useState<HomeBanner>({});
-  const [savingBanner, setSavingBanner] = useState(false);
-  useEffect(() => { homeApi.banner.get().then(setBanner).catch(() => {}); }, []);
-
-  const saveBanner = async () => {
-    setSavingBanner(true);
-    try {
-      const saved = await homeApi.banner.update({
-        title: banner.title,
-        subtitle: banner.subtitle,
-        cta_label: banner.cta_label,
-        cta_url: banner.cta_url,
-        ...(banner.image_url ? { image: banner.image_url } : {}),
-      });
-      setBanner(saved);
-      toast.success("Bannière d'accueil mise à jour");
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
-    } finally {
-      setSavingBanner(false);
-    }
-  };
 
   const handleSave = () => {
     toast.success("Paramètres sauvegardés avec succès");
@@ -87,41 +62,6 @@ export default function ParametresPage() {
           {/* ── General ── */}
           {activeTab === "general" && (
             <>
-              <div className="panel">
-                <div className="panel-h"><div><h3>Bannière d&apos;accueil</h3><div className="sub">Grande bannière de la page d&apos;accueil (site public)</div></div></div>
-                <div className="panel-b">
-                  <div className="fld">
-                    <label>Titre</label>
-                    <input value={banner.title ?? ""} onChange={(e) => setBanner({ ...banner, title: e.target.value })} placeholder="Bienvenue sur Art du Kivu" />
-                  </div>
-                  <div className="fld">
-                    <label>Sous-titre</label>
-                    <input value={banner.subtitle ?? ""} onChange={(e) => setBanner({ ...banner, subtitle: e.target.value })} placeholder="Découvrez les talents du Kivu" />
-                  </div>
-                  <div className="fld-row">
-                    <div className="fld">
-                      <label>Libellé du bouton</label>
-                      <input value={banner.cta_label ?? ""} onChange={(e) => setBanner({ ...banner, cta_label: e.target.value })} placeholder="Écouter" />
-                    </div>
-                    <div className="fld">
-                      <label>Lien du bouton</label>
-                      <input value={banner.cta_url ?? ""} onChange={(e) => setBanner({ ...banner, cta_url: e.target.value })} placeholder="https://..." />
-                    </div>
-                  </div>
-                  <div className="fld" style={{ marginBottom: 0 }}>
-                    <label>Image (URL Cloudinary)</label>
-                    <input value={banner.image_url ?? ""} onChange={(e) => setBanner({ ...banner, image_url: e.target.value })} placeholder="https://res.cloudinary.com/..." />
-                  </div>
-                  <button className="btn btn-red" style={{ marginTop: 14 }} onClick={saveBanner} disabled={savingBanner}>
-                    {savingBanner && <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />}
-                    Enregistrer la bannière
-                  </button>
-                  <p className="text-xs text-muted-foreground" style={{ marginTop: 8 }}>
-                    La page d&apos;accueil est mise en cache 15 min — le changement peut mettre jusqu&apos;à 15 min à apparaître.
-                  </p>
-                </div>
-              </div>
-
               <div className="panel">
                 <div className="panel-h"><div><h3>Informations du Site</h3></div></div>
                 <div className="panel-b">

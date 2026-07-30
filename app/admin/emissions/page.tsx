@@ -97,6 +97,22 @@ export default function EmissionsPage() {
     return () => clearInterval(id);
   }, [watch?.show.slug, watch?.show.status, watch?.detail?.playback_hls_url]);
 
+  // Après la fin du direct, l'enregistrement se fait en arrière-plan : on
+  // re-poll tant que recording_status reste "pending" pour que video_url
+  // apparaisse dès qu'il est prêt, sans action de l'admin.
+  useEffect(() => {
+    if (!watch || watch.detail?.recording_status !== "pending") return;
+    const slug = watch.show.slug;
+    const id = setInterval(async () => {
+      try {
+        const d = await emissionsApi.get(slug);
+        setWatch((w) => (w && w.show.slug === slug ? { ...w, detail: d } : w));
+        if (d.recording_status !== "pending") fetchShows();
+      } catch { /* retentera */ }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [watch?.show.slug, watch?.detail?.recording_status, fetchShows]);
+
   const openCreate = () => {
     setEditingSlug(null);
     setForm(EMPTY_FORM);
@@ -231,7 +247,7 @@ export default function EmissionsPage() {
   const handleShare = async (show: EmissionList) => {
     try {
       const detail = await emissionsApi.get(show.slug);
-      const link = detail.playback_hls_url || detail.stream_url || "";
+      const link = detail.playback_hls_url || detail.video_url || detail.stream_url || "";
       if (!link) { toast.error("Aucun lien de lecture disponible"); return; }
       await navigator.clipboard.writeText(link);
       toast.success("Lien copié dans le presse-papier");
@@ -392,6 +408,8 @@ export default function EmissionsPage() {
                 )}
                 {show.status === "live" && <span className="m-tag m-live"><span className="pulse" />LIVE</span>}
                 {show.status === "scheduled" && <span className="m-tag m-sched">Programmé</span>}
+                {show.status === "recorded" && show.recording_status === "pending" && <span className="m-tag m-sched">Enregistrement…</span>}
+                {show.status === "recorded" && show.recording_status === "failed" && <span className="m-tag" style={{ background: "var(--red-soft)", color: "var(--red)" }}>Échec enregistrement</span>}
                 {(show.status === "live" || show.status === "recorded") && (
                   <button className="m-play" onClick={() => handleWatch(show)}>
                     <div className="pb"><Play /></div>
@@ -489,6 +507,14 @@ export default function EmissionsPage() {
                       ? "Le direct n'a pas encore démarré (aucune diffusion active)."
                       : "Enregistrement indisponible pour cette émission."}
                   />
+                ) : watch.detail.video_url ? (
+                  <video src={watch.detail.video_url} poster={watch.detail.cover_url ?? undefined}
+                    controls autoPlay playsInline className="h-full w-full bg-black" />
+                ) : watch.detail.recording_status === "pending" ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />
+                    Enregistrement en cours de traitement…
+                  </div>
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
                     <WifiOff className="h-8 w-8" />

@@ -23,6 +23,7 @@ const quickActions = [
 
 const breadcrumbMap: Record<string, string> = {
   admin: "Tableau de bord",
+  accueil: "Page d'accueil",
   articles: "Articles",
   artistes: "Artistes",
   releases: "Sorties",

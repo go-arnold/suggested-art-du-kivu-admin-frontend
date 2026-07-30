@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Radio, Search, Filter, MoreHorizontal, Plus, Trash2, Loader2, Edit,
-  Play, Pause, Headphones, Copy, Mic2, Users, MessagesSquare,
+  Play, Pause, Headphones, Copy, Mic2, Users, MessagesSquare, MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,10 +21,11 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { HlsPlayer } from "@/components/admin/hls-player";
-import { ModerationDialog, chatToMod } from "@/components/admin/moderation-dialog";
+import { ModerationDialog, commentToMod, chatToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
 import {
-  radioApi, radioChatApi, extractStreamCreds, type RadioProgram, type RadioProgramWrite, type RadioStatus,
+  radioApi, radioChatApi, commentsApi, extractStreamCreds,
+  type RadioProgram, type RadioProgramWrite, type RadioStatus,
 } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -50,6 +51,7 @@ export default function RadioPage() {
   const [watch, setWatch] = useState<RadioProgram | null>(null);
   const [liveCreds, setLiveCreds] = useState<{ title: string; url: string; key: string } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [comments, setComments] = useState<RadioProgram | null>(null);
   const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -84,6 +86,22 @@ export default function RadioPage() {
     }, 8000);
     return () => clearInterval(t);
   }, [watch?.id, watch?.status, watch?.playback_hls_url]);
+
+  // Après la fin de l'antenne, l'enregistrement se fait en arrière-plan : on
+  // re-poll tant que recording_status reste "pending" pour que audio_url
+  // apparaisse dès qu'il est prêt, sans action de l'admin.
+  useEffect(() => {
+    if (!watch || watch.recording_status !== "pending") return;
+    const rid = watch.id;
+    const t = setInterval(async () => {
+      try {
+        const fresh = await radioApi.get(rid);
+        setWatch((w) => (w && w.id === rid ? fresh : w));
+        if (fresh.recording_status !== "pending") fetch();
+      } catch { /* retentera */ }
+    }, 8000);
+    return () => clearInterval(t);
+  }, [watch?.id, watch?.recording_status, fetch]);
 
   const copy = (v: string) => { navigator.clipboard.writeText(v); toast.success("Copié"); };
 
@@ -266,6 +284,8 @@ export default function RadioPage() {
                 <span className={`badge ${STATUS_BADGE[r.status]}`}>
                   {r.status === "live" && <span className="bd" />}{STATUS_LABELS[r.status]}
                 </span>
+                {r.status !== "live" && r.recording_status === "pending" && <span className="badge b-blue">Enregistrement…</span>}
+                {r.status !== "live" && r.recording_status === "failed" && <span className="badge" style={{ background: "var(--red-soft)", color: "var(--red)" }}>Échec enregistrement</span>}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="row-act"><MoreHorizontal /></button>
@@ -279,6 +299,10 @@ export default function RadioPage() {
                     ) : (
                       <DropdownMenuItem onClick={() => handleGoLive(r)}><Play className="mr-2 h-4 w-4" />Passer à l&apos;antenne</DropdownMenuItem>
                     )}
+                    {r.status !== "live" && r.recording_status === "ready" && r.audio_url && (
+                      <DropdownMenuItem onClick={() => setWatch(r)}><Headphones className="mr-2 h-4 w-4" />Écouter l&apos;enregistrement</DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setComments(r)}><MessageSquare className="mr-2 h-4 w-4" />Commentaires</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => openEdit(r)}><Edit className="mr-2 h-4 w-4" />Modifier</DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(r.id)}><Trash2 className="mr-2 h-4 w-4" />Supprimer</DropdownMenuItem>
@@ -366,12 +390,25 @@ export default function RadioPage() {
           {watch && (
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2"><Badge className="bg-red-500 text-white">LIVE</Badge>{watch.title}</DialogTitle>
-                <DialogDescription>Diffusion en direct de l&apos;antenne radio.</DialogDescription>
+                <DialogTitle className="flex items-center gap-2">
+                  {watch.status === "live" && <Badge className="bg-red-500 text-white">LIVE</Badge>}{watch.title}
+                </DialogTitle>
+                <DialogDescription>
+                  {watch.status === "live" ? "Diffusion en direct de l'antenne radio." : "Écoute de l'enregistrement."}
+                </DialogDescription>
               </DialogHeader>
               <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
                 {watch.playback_hls_url ? (
                   <HlsPlayer src={watch.playback_hls_url} muted={watch.status === "live"} emptyLabel="Le direct n'a pas encore démarré." />
+                ) : watch.audio_url ? (
+                  <div className="flex h-full items-center justify-center p-4">
+                    <audio src={watch.audio_url} controls autoPlay className="w-full" />
+                  </div>
+                ) : watch.recording_status === "pending" ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />
+                    Enregistrement en cours de traitement…
+                  </div>
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Flux indisponible.</div>
                 )}
@@ -422,6 +459,17 @@ export default function RadioPage() {
         load={() => radioChatApi.list().then((r) => r.results.map(chatToMod))}
         remove={(mid) => radioChatApi.remove(mid)}
       />
+
+      {/* Modération : commentaires */}
+      {comments && (
+        <ModerationDialog
+          open onOpenChange={(o) => !o && setComments(null)}
+          title={`Commentaires — ${comments.title}`}
+          emptyLabel="Aucun commentaire sur ce programme."
+          load={() => commentsApi.list("radio/program", comments.id).then((r) => r.results.map(commentToMod))}
+          remove={(cid) => commentsApi.remove("radio/program", comments.id, cid)}
+        />
+      )}
     </section>
   );
 }

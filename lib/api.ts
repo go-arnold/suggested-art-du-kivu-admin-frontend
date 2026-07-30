@@ -404,6 +404,18 @@ export const articlesApi = {
     );
     return Array.isArray(res) ? res : (res?.results ?? []);
   },
+  createCategory: (data: { name: string; color?: string }) =>
+    apiFetch<ArticleCategory>("/articles/categories/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateCategory: (id: number, data: Partial<{ name: string; color: string }>) =>
+    apiFetch<ArticleCategory>(`/articles/categories/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteCategory: (id: number) =>
+    apiFetch<void>(`/articles/categories/${id}/`, { method: "DELETE" }),
   tags: (params?: string) =>
     apiFetch<PaginatedResponse<ArticleTag>>(`/articles/tags/${params ? `?${params}` : ""}`),
   createTag: (name: string) =>
@@ -703,6 +715,7 @@ export interface EmissionList {
   total_views: number;
   host_names?: string[];
   created_at?: string;
+  recording_status?: RecordingStatus;
 }
 
 export interface EmissionWrite {
@@ -718,6 +731,9 @@ export interface EmissionWrite {
 /** Détail émission avec les URLs de lecture MediaMTX */
 export interface EmissionDetail extends EmissionList {
   playback_hls_url?: string;
+  // Rempli une fois recording_status === "ready" (direct caméra/micro enregistré
+  // automatiquement) — vide tant que l'enregistrement n'est pas prêt.
+  video_url?: string | null;
 }
 
 /**
@@ -772,6 +788,12 @@ export const emissionsApi = {
   endLive: (slug: string) =>
     apiFetch<void>(`/emissions/${slug}/end_live/`, { method: "POST" }),
 };
+
+// ─── Enregistrement automatique des directs ───────────────────────────────────
+// Présent sur les 4 surfaces live (webtv, emissions, radio, live_music). Le champ
+// qui reçoit le résultat diffère : video_url (webtv/emissions) ou audio_url
+// (radio/live_music) — voir docs/LIVE_STREAMING.md.
+export type RecordingStatus = "none" | "pending" | "ready" | "failed";
 
 // ─── Podcasts ─────────────────────────────────────────────────────────────────
 
@@ -850,6 +872,10 @@ export interface PodcastSeriesWrite {
   description?: string;
   cover?: string;        // URL Cloudinary (contexte upload: podcast_cover)
   is_featured?: boolean;
+  // Podcast autonome (sans épisode) : la série porte directement son audio.
+  // is_series repasse à true tout seul dès qu'un 2e épisode est rattaché.
+  audio_url?: string;
+  duration?: string;
 }
 
 // Note : les séries podcast sont désormais sous /podcasts/series/ (les épisodes restent /podcasts/episodes/).
@@ -954,17 +980,25 @@ export const releasesApi = {
 
 // ─── Home / Dashboard ─────────────────────────────────────────────────────────
 
+/**
+ * Réponse agrégée de GET /home/ — ce qui s'affiche réellement sur la page
+ * d'accueil publique. Mise en cache serveur 15 min (voir HomeBanner plus bas :
+ * un PATCH sur /home/banner/ peut mettre jusqu'à 15 min à s'y répercuter).
+ * Chaque sous-section peut être `null` (rien à la une configuré) — l'UI doit
+ * gérer l'absence plutôt que planter.
+ */
 export interface HomeData {
-  featured_artists?: ArtistList[];
-  latest_news?: ArticleList[];
-  top_releases?: unknown[];
-  // stats if the API exposes them
-  stats?: {
-    monthly_visits?: number;
-    newsletter_subscribers?: number;
-    published_articles?: number;
-    upcoming_events?: number;
-  };
+  banner?: HomeBanner | null;
+  a_la_une?: {
+    artist_of_month?: ArtistList | null;
+    featured_podcast?: EpisodeList | null;
+    featured_event?: EventList | null;
+  } | null;
+  hits_du_mois?: ReleaseList[];
+  magazine?: {
+    hero?: ArticleList | null;
+    articles?: ArticleList[];
+  } | null;
 }
 
 /** Bannière d'accueil configurable (singleton, PATCH réservé au staff). */
@@ -1004,6 +1038,8 @@ export interface VideoListItem {
   view_count: number;
   published_at: string | null;
   artist_names?: string[];
+  // Enregistrement auto du direct caméra (mode playout : toujours "none", rien à enregistrer).
+  recording_status?: RecordingStatus;
 }
 
 export interface VideoDetail extends VideoListItem {
@@ -1056,6 +1092,12 @@ export const videosApi = {
     apiFetch<void>(`/webtv/videos/${slug}/end_live/`, { method: "POST" }),
   bulkDelete: (ids: number[]) =>
     apiFetch<void>("/webtv/videos/bulk_delete/", { method: "POST", body: JSON.stringify({ ids }) }),
+  // Spectateurs en ligne (lecture ponctuelle, hors WebSocket) — forme souple,
+  // le backend peut nommer le compteur différemment selon la version.
+  onlineCount: (slug: string) =>
+    apiFetch<{ count?: number; online_count?: number; viewers?: number }>(
+      `/webtv/videos/${slug}/online-count/`
+    ),
 };
 
 // ─── Analytics (admin) ────────────────────────────────────────────────────────
@@ -1181,6 +1223,9 @@ export interface RadioProgram {
   stream_url?: string;
   playback_hls_url?: string;
   listener_count?: number;
+  recording_status?: RecordingStatus;
+  // Rempli une fois recording_status === "ready" — l'enregistrement du direct.
+  audio_url?: string | null;
 }
 
 export interface RadioProgramWrite {
@@ -1227,6 +1272,9 @@ export interface MusicLiveSession {
   online_followers?: string;
   live_started_at?: string | null;
   created_at?: string;
+  recording_status?: RecordingStatus;
+  // Rempli une fois recording_status === "ready" — l'enregistrement du direct.
+  audio_url?: string | null;
 }
 
 export interface MusicLiveSessionWrite {
@@ -1350,6 +1398,15 @@ export interface Challenge {
   deadline: string;
   participant_count?: number;
   is_active?: boolean;
+  // Pour l'utilisateur authentifié courant (toujours false en appel anonyme).
+  has_participated?: boolean;
+}
+
+/** Corps attendu par `participate/` et `publish_result/` — même forme que submit_talent. */
+export interface ChallengeEntryWrite {
+  title: string;
+  content: string;
+  media?: MediaItem[];
 }
 
 export interface ChallengeWrite {
@@ -1391,6 +1448,16 @@ export const communityApi = {
       apiFetch<Challenge>(`/community/challenges/${slug}/`, { method: "PATCH", body: JSON.stringify(data) }),
     delete: (slug: string) =>
       apiFetch<void>(`/community/challenges/${slug}/`, { method: "DELETE" }),
+    // Répondre au défi (une seule fois par utilisateur — 400 "already_joined" sinon).
+    participate: (slug: string, data: ChallengeEntryWrite) =>
+      apiFetch<CommunityPost>(`/community/challenges/${slug}/participate/`, {
+        method: "POST", body: JSON.stringify(data),
+      }),
+    // Résultat épinglé (réservé au staff) — même forme que participate/.
+    publishResult: (slug: string, data: ChallengeEntryWrite) =>
+      apiFetch<CommunityPost>(`/community/challenges/${slug}/publish_result/`, {
+        method: "POST", body: JSON.stringify(data),
+      }),
   },
 };
 

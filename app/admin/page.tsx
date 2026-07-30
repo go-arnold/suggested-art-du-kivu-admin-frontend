@@ -43,7 +43,9 @@ export default function AdminDashboard() {
 
   const counts = stats?.counts ?? {};
   const totals = stats?.totals ?? {};
-  const news = home?.latest_news ?? [];
+  // Reflète la page d'accueil publique réelle (GET /home/, mise en cache 15 min
+  // côté serveur) : magazine.articles = derniers articles magazine mis en avant.
+  const news = home?.magazine?.articles ?? [];
   const topArticles = stats?.top_articles ?? [];
 
   const distribution = [
