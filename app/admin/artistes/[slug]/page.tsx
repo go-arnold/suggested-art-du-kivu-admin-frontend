@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Pencil, Loader2, MapPin, Star, Music, Video, Image as ImageIcon,
-  Instagram, Facebook, Twitter, Youtube, Play, Pause, Eye,
+  Instagram, Facebook, Twitter, Youtube, Play, Pause, Eye, Plus, Trash2, MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { artistsApi, type ArtistDetail, type ArtistVideo, type ArtistPhoto } from "@/lib/api";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { MediaUpload } from "@/components/admin/media-upload";
+import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
+import { artistsApi, commentsApi, type ArtistDetail, type ArtistVideo, type ArtistPhoto } from "@/lib/api";
 import { toast } from "sonner";
 
 const SOCIAL = [
@@ -21,43 +27,98 @@ const SOCIAL = [
   { key: "youtube", icon: Youtube, label: "YouTube" },
 ] as const;
 
+const RELEASE_FORMATS = ["album", "single", "clip", "documentaire", "expo"];
+
+type AddType = "release" | "video" | "photo" | null;
+
 export default function ArtistDetailPage() {
   const params = useParams<{ slug: string }>();
+  const slug = params.slug;
   const router = useRouter();
   const [artist, setArtist] = useState<ArtistDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Lecture audio des sons (élément <audio> partagé).
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playingId, setPlayingId] = useState<number | null>(null);
-  // Vidéo / photo en plein écran.
   const [video, setVideo] = useState<ArtistVideo | null>(null);
   const [photo, setPhoto] = useState<ArtistPhoto | null>(null);
+  const [showComments, setShowComments] = useState(false);
 
-  useEffect(() => {
-    artistsApi
-      .get(params.slug)
-      .then(setArtist)
-      .catch(() => {
-        toast.error("Artiste introuvable");
-        router.push("/admin/artistes");
-      })
-      .finally(() => setLoading(false));
-  }, [params.slug, router]);
+  // Ajout de média
+  const [addType, setAddType] = useState<AddType>(null);
+  const [saving, setSaving] = useState(false);
+  const emptyMedia = {
+    title: "", format: "single", release_date: "", cover: "", preview_url: "",
+    video_url: "", thumbnail: "", duration: "", image: "", caption: "",
+  };
+  const [media, setMedia] = useState(emptyMedia);
+
+  const load = useCallback(() => {
+    return artistsApi.get(slug).then(setArtist).catch(() => {
+      toast.error("Artiste introuvable");
+      router.push("/admin/artistes");
+    });
+  }, [slug, router]);
+
+  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
 
   const togglePlay = (id: number, url?: string | null) => {
     const audio = audioRef.current;
     if (!audio || !url) { toast.error("Aucun extrait audio disponible"); return; }
-    if (playingId === id) {
-      audio.pause();
-      setPlayingId(null);
-      return;
-    }
+    if (playingId === id) { audio.pause(); setPlayingId(null); return; }
     audio.src = url;
     audio.play().then(() => setPlayingId(id)).catch(() => {
       toast.error("Lecture impossible (source non compatible / CORS)");
       setPlayingId(null);
     });
+  };
+
+  const openAdd = (t: AddType) => { setMedia(emptyMedia); setAddType(t); };
+
+  const handleAdd = async () => {
+    if (!addType) return;
+    if (addType !== "photo" && !media.title.trim()) { toast.error("Le titre est requis"); return; }
+    setSaving(true);
+    try {
+      if (addType === "release") {
+        await artistsApi.releases.create(slug, {
+          title: media.title.trim(),
+          format: media.format,
+          release_date: media.release_date || undefined,
+          cover: media.cover || undefined,
+          preview_url: media.preview_url || undefined,
+        });
+      } else if (addType === "video") {
+        if (!media.video_url.trim()) { toast.error("L'URL de la vidéo est requise"); setSaving(false); return; }
+        await artistsApi.videos.create(slug, {
+          title: media.title.trim(),
+          video_url: media.video_url.trim(),
+          thumbnail: media.thumbnail || undefined,
+          duration: media.duration || undefined,
+        });
+      } else {
+        if (!media.image) { toast.error("Ajoutez une image"); setSaving(false); return; }
+        await artistsApi.gallery.create(slug, { image: media.image, caption: media.caption || undefined });
+      }
+      toast.success("Média ajouté");
+      setAddType(null);
+      await load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'ajout");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async (kind: "releases" | "videos" | "gallery", id: number) => {
+    if (!confirm("Supprimer cet élément ?")) return;
+    try {
+      await artistsApi[kind].delete(slug, id);
+      toast.success("Supprimé");
+      await load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la suppression");
+    }
   };
 
   if (loading) {
@@ -67,7 +128,6 @@ export default function ArtistDetailPage() {
       </div>
     );
   }
-
   if (!artist) return null;
 
   const genres = artist.genres?.map((g) => g.name) ?? artist.genre_names ?? [];
@@ -92,6 +152,9 @@ export default function ArtistDetailPage() {
           </div>
         </div>
         <div className="h-actions">
+          <button className="btn btn-ghost" onClick={() => setShowComments(true)}>
+            <MessageSquare />Commentaires
+          </button>
           <Link href={`/admin/artistes/${artist.slug}/modifier`} className="btn btn-red">
             <Pencil />Modifier
           </Link>
@@ -131,7 +194,6 @@ export default function ArtistDetailPage() {
             </div>
           </div>
 
-          {/* Stats */}
           <div className="grid grid-cols-2 gap-4">
             <div className="panel p-4 text-center">
               <Music className="mx-auto mb-1 h-5 w-5 text-primary" />
@@ -191,7 +253,7 @@ export default function ArtistDetailPage() {
       <div className="panel mt-6">
         <div className="panel-h">
           <div><h3>Sons &amp; sorties</h3><div className="sub">{releases.length} élément{releases.length > 1 ? "s" : ""}</div></div>
-          <Link href="/admin/releases" className="link">Gérer</Link>
+          <button className="btn btn-ghost" onClick={() => openAdd("release")}><Plus />Ajouter</button>
         </div>
         <div className="panel-b">
           {releases.length === 0 ? (
@@ -210,7 +272,10 @@ export default function ArtistDetailPage() {
                   </div>
                   <div className="m-body">
                     <div className="m-title">{r.title}</div>
-                    <div className="m-series">{r.format}{r.release_date ? ` · ${new Date(r.release_date).getFullYear()}` : ""}</div>
+                    <div className="m-meta">
+                      <span className="mi">{r.format}{r.release_date ? ` · ${new Date(r.release_date).getFullYear()}` : ""}</span>
+                      <button className="row-act" onClick={() => del("releases", r.id)} aria-label="Supprimer"><Trash2 /></button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -223,7 +288,7 @@ export default function ArtistDetailPage() {
       <div className="panel mt-6">
         <div className="panel-h">
           <div><h3>Vidéos</h3><div className="sub">{videos.length} vidéo{videos.length > 1 ? "s" : ""}</div></div>
-          <Link href="/admin/webtv" className="link">Web TV</Link>
+          <button className="btn btn-ghost" onClick={() => openAdd("video")}><Plus />Ajouter</button>
         </div>
         <div className="panel-b">
           {videos.length === 0 ? (
@@ -231,8 +296,8 @@ export default function ArtistDetailPage() {
           ) : (
             <div className="m-grid">
               {videos.map((v) => (
-                <div className="m-card" key={v.id} onClick={() => setVideo(v)} style={{ cursor: "pointer" }}>
-                  <div className="m-cover c2">
+                <div className="m-card" key={v.id}>
+                  <div className="m-cover c2" onClick={() => setVideo(v)} style={{ cursor: "pointer" }}>
                     {v.thumbnail_url && <img src={v.thumbnail_url} alt={v.title} loading="lazy" />}
                     <div className="m-play"><div className="pb"><Play /></div></div>
                   </div>
@@ -241,6 +306,7 @@ export default function ArtistDetailPage() {
                     <div className="m-meta">
                       {v.duration && <span className="mi">{v.duration}</span>}
                       {typeof v.view_count === "number" && <span className="mi"><Eye />{v.view_count}</span>}
+                      <button className="row-act" onClick={() => del("videos", v.id)} aria-label="Supprimer"><Trash2 /></button>
                     </div>
                   </div>
                 </div>
@@ -254,6 +320,7 @@ export default function ArtistDetailPage() {
       <div className="panel mt-6">
         <div className="panel-h">
           <div><h3>Galerie photos</h3><div className="sub">{gallery.length} photo{gallery.length > 1 ? "s" : ""}</div></div>
+          <button className="btn btn-ghost" onClick={() => openAdd("photo")}><Plus />Ajouter</button>
         </div>
         <div className="panel-b">
           {gallery.length === 0 ? (
@@ -261,11 +328,14 @@ export default function ArtistDetailPage() {
           ) : (
             <div className="assets">
               {gallery.map((p) => (
-                <div className="asset" key={p.id} onClick={() => setPhoto(p)}>
-                  <div className="asset-th">
+                <div className="asset" key={p.id}>
+                  <div className="asset-th" onClick={() => setPhoto(p)} style={{ cursor: "pointer" }}>
                     {p.image_url ? <img src={p.image_url} alt={p.caption || artist.name} loading="lazy" /> : <ImageIcon />}
                   </div>
-                  {p.caption && <div className="asset-b"><div className="t">{p.caption}</div></div>}
+                  <div className="asset-b" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div className="t" style={{ flex: 1 }}>{p.caption || "—"}</div>
+                    <button className="row-act" onClick={() => del("gallery", p.id)} aria-label="Supprimer"><Trash2 /></button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -290,6 +360,93 @@ export default function ArtistDetailPage() {
           {photo && <img src={photo.image_url} alt={photo.caption || ""} className="w-full rounded-lg" />}
         </DialogContent>
       </Dialog>
+
+      {/* Ajout de média */}
+      <Dialog open={!!addType} onOpenChange={(o) => { if (!o && !saving) setAddType(null); }}>
+        <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {addType === "release" ? "Ajouter un son / une sortie" : addType === "video" ? "Ajouter une vidéo" : "Ajouter une photo"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            {addType !== "photo" && (
+              <div className="grid gap-2">
+                <Label>Titre *</Label>
+                <Input value={media.title} onChange={(e) => setMedia({ ...media, title: e.target.value })} placeholder="Titre" />
+              </div>
+            )}
+
+            {addType === "release" && (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label>Format</Label>
+                    <select className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                      value={media.format} onChange={(e) => setMedia({ ...media, format: e.target.value })}>
+                      {RELEASE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Date de sortie</Label>
+                    <Input type="date" value={media.release_date} onChange={(e) => setMedia({ ...media, release_date: e.target.value })} />
+                  </div>
+                </div>
+                <MediaUpload label="Pochette" context="release_cover" aspect="square"
+                  value={media.cover || null} onChange={(url) => setMedia({ ...media, cover: url ?? "" })} />
+                <MediaUpload label="Extrait audio" context="release_preview" variant="audio" accept="audio/*"
+                  value={media.preview_url || null} onChange={(url) => setMedia({ ...media, preview_url: url ?? "" })} />
+              </>
+            )}
+
+            {addType === "video" && (
+              <>
+                <div className="grid gap-2">
+                  <Label>URL de la vidéo * (YouTube, Cloudinary…)</Label>
+                  <Input type="url" value={media.video_url} onChange={(e) => setMedia({ ...media, video_url: e.target.value })}
+                    placeholder="https://youtube.com/watch?v=…" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Durée</Label>
+                  <Input value={media.duration} onChange={(e) => setMedia({ ...media, duration: e.target.value })} placeholder="3:45" maxLength={10} />
+                </div>
+                <MediaUpload label="Miniature" context="artist_gallery_photo" aspect="video"
+                  value={media.thumbnail || null} onChange={(url) => setMedia({ ...media, thumbnail: url ?? "" })} />
+              </>
+            )}
+
+            {addType === "photo" && (
+              <>
+                <MediaUpload label="Photo *" context="artist_gallery_photo" aspect="square"
+                  value={media.image || null} onChange={(url) => setMedia({ ...media, image: url ?? "" })} />
+                <div className="grid gap-2">
+                  <Label>Légende</Label>
+                  <Input value={media.caption} onChange={(e) => setMedia({ ...media, caption: e.target.value })} placeholder="Légende (optionnelle)" />
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddType(null)} disabled={saving}>Annuler</Button>
+            <Button onClick={handleAdd} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Ajouter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modération des commentaires */}
+      {showComments && (
+        <ModerationDialog
+          open onOpenChange={setShowComments}
+          title={`Commentaires — ${artist.name}`}
+          emptyLabel="Aucun commentaire sur cet artiste."
+          load={() => commentsApi.list("artists", artist.slug).then((r) => r.results.map(commentToMod))}
+          remove={(cid) => commentsApi.remove("artists", artist.slug, cid)}
+        />
+      )}
     </section>
   );
 }

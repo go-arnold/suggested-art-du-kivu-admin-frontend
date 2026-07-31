@@ -915,6 +915,183 @@
   margin-top: 20px;
 }
 
+/* Bannière avec image : couche animée (Ken Burns) + overlay dégradé, sous le contenu. */
+.hero-media {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  animation: kenburns 22s ease-in-out infinite alternate;
+}
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, rgba(16, 17, 39, 0.9) 10%, rgba(28, 24, 52, 0.78) 50%, rgba(58, 28, 44, 0.68) 100%);
+}
+@keyframes kenburns {
+  from { transform: scale(1); }
+  to { transform: scale(1.09); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-media { animation: none; }
+  .cover-zoom img { transition: none; }
+  .live-dot { animation: none; }
+}
+
+/* Zoom léger au survol d'une image de couverture dans un conteneur .cover-zoom */
+.cover-zoom img {
+  transition: transform 0.6s ease;
+}
+.cover-zoom:hover img {
+  transform: scale(1.06);
+}
+
+/* Variante « grand format » de .hero, réservée aux pages où la bannière est le
+   sujet principal (ex. page d'accueil) — plus de respiration, typographie plus
+   affirmée. */
+.hero-xl {
+  padding: 60px 54px;
+}
+.hero-xl h1 {
+  font-size: 44px;
+  letter-spacing: -1.4px;
+}
+.hero-xl p {
+  font-size: 15.5px;
+  max-width: 540px;
+}
+.hero-xl .hero-eyebrow {
+  font-size: 12px;
+}
+
+/* Quand un badge d'icône précède déjà le titre, la barre d'accent ::before fait doublon. */
+.panel-h.no-bar h3::before {
+  content: none;
+}
+
+/* Petit badge d'icône coloré devant un titre de section (cohérent avec .kpi-ic). */
+.sec-ic {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.sec-ic svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Point vivant (indique un aperçu synchronisé en direct). */
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--emerald);
+  display: inline-block;
+  animation: pulse 1.6s infinite;
+}
+
+/* Bandeau de statistiques (grands chiffres, façon page vitrine). */
+.stats-strip {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.stats-strip .stat {
+  flex: 1 1 180px;
+  padding: 30px 26px;
+  text-align: center;
+  border-right: 1px solid var(--line-2);
+}
+.stats-strip .stat:last-child {
+  border-right: none;
+}
+.stats-strip .stat-v {
+  font-family: var(--disp);
+  font-weight: 800;
+  font-size: 36px;
+  letter-spacing: -1.2px;
+  color: var(--t1);
+  line-height: 1;
+}
+.stats-strip .stat-l {
+  margin-top: 9px;
+  font-size: 12.5px;
+  color: var(--t2);
+  font-weight: 500;
+}
+
+/* Bloc de fonctionnalité alterné (image d'un côté, texte de l'autre). */
+.feature-row {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+.feature-row.reverse {
+  flex-direction: row-reverse;
+}
+.feature-row .f-media {
+  flex: 1 1 320px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  height: 260px;
+  position: relative;
+  box-shadow: var(--shadow);
+}
+.feature-row .f-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.feature-row .f-text {
+  flex: 1 1 280px;
+}
+.feature-row .f-eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--red);
+  margin-bottom: 8px;
+}
+.feature-row .f-title {
+  font-family: var(--disp);
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: -0.4px;
+  line-height: 1.25;
+  margin-bottom: 10px;
+}
+.feature-row .f-body {
+  font-size: 13.5px;
+  color: var(--t2);
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+
+/* Emplacement « non configuré » à l'intérieur d'une carte À la une. */
+.feature-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.feature-empty .cta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--red);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* ---------- KPI ---------- */
 .kpis {
   display: grid;

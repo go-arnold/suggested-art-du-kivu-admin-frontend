@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
+  Home,
   BarChart3,
   CalendarDays,
   Newspaper,
@@ -41,6 +42,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Pilotage",
     items: [
+      { title: "Page d'accueil", href: "/admin/accueil", icon: Home },
       { title: "Tableau de bord", href: "/admin", icon: LayoutDashboard },
       { title: "Statistiques", href: "/admin/statistiques", icon: BarChart3 },
       { title: "Planning éditorial", href: "/admin/planning", icon: CalendarDays },
@@ -107,7 +109,7 @@ export function AdminSidebar() {
   return (
     <aside className="sb">
       <div className="sb-head">
-        <Link href="/admin" className="logo" aria-label="Art-du-Kivu">
+        <Link href="/admin/accueil" className="logo" aria-label="Art-du-Kivu">
           <Image src="/logo.png" alt="Art-du-Kivu" width={42} height={42} className="object-contain" />
         </Link>
         <div>

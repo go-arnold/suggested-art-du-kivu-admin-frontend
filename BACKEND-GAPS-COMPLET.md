@@ -1,5 +1,19 @@
 # Manques & écarts côté backend — audit complet
 
+> ## ✅ Mise à jour — la plupart de ces manques ont été traités côté backend
+> Le backend a livré `FRONTEND_INTEGRATION 2.md` + `LIVE_STREAMING 1.md`. Côté **frontend admin**,
+> ont été intégrés depuis : migration des podcasts vers `/podcasts/series/` + invités au format
+> `{name, artist_id?, user_id?}` ; création/suppression d'utilisateurs (`POST/DELETE /users/`) ;
+> Web TV `broadcast_mode` (fin du placeholder/localStorage) ; **CRUD médias artiste** (sons/vidéos/
+> photos depuis la fiche) ; posts communauté avec **titre + média** ; **bannière d'accueil**
+> configurable dans Paramètres. Restent surtout **côté frontend _client_** (hors admin) : gamification/
+> badges, engagement (like/save) UI, WebSocket présence/chat, page profil (signets/activité), page
+> d'accueil agrégée. Le détail ci-dessous reste utile comme historique et pour les points non-admin.
+
+---
+
+## (historique) Audit initial
+
 > Audit exhaustif du frontend admin (`app/`, `components/`, `lib/api.ts`) croisé avec
 > la spec OpenAPI (`Art du Kivu API.yaml`) et le comportement réel constaté.
 > Objectif : lister tout ce qui **manque**, **diffère** ou **bloque** côté backend.

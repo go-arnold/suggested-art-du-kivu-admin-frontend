@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Tv, Search, Filter, MoreHorizontal, Eye, Play, Radio, Pause, Share2,
-  Trash2, Loader2, Video, Copy, Star, Plus, MessageSquare, MessagesSquare, Edit, Clock,
+  Trash2, Loader2, Video, Copy, Star, Plus, MessageSquare, MessagesSquare, Edit, Clock, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,7 @@ export default function WebTvPage() {
   const [mode,       setMode]       = useState<"file" | "camera">("file");
   const [comments,   setComments]   = useState<VideoListItem | null>(null);
   const [chatFor,    setChatFor]    = useState<VideoListItem | null>(null);
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
   // Slugs diffusés en mode « vidéo uploadée » (playout) — le backend ne distingue
   // pas ce mode du direct caméra, on le mémorise donc localement.
   const [playoutSlugs, setPlayoutSlugs] = useState<Set<string>>(new Set());
@@ -108,6 +109,21 @@ export default function WebTvPage() {
 
   useEffect(() => { fetchVideos(); }, [fetchVideos]);
 
+  // Spectateurs en ligne (lecture ponctuelle, hors WebSocket) — interrogé
+  // toutes les 12 s tant que la fenêtre de lecture d'un direct reste ouverte.
+  useEffect(() => {
+    if (!watch?.item.is_live) { setOnlineCount(null); return; }
+    const slug = watch.item.slug;
+    const poll = () => {
+      videosApi.onlineCount(slug)
+        .then((r) => setOnlineCount(r.count ?? r.online_count ?? r.viewers ?? null))
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 12000);
+    return () => clearInterval(id);
+  }, [watch?.item.slug, watch?.item.is_live]);
+
   // Pendant qu'on regarde un direct, on ré-interroge le détail toutes les 8 s
   // jusqu'à ce que le flux caméra (playback_hls_url) apparaisse — MediaMTX met
   // ~15 s à détecter OBS après go_live.
@@ -123,6 +139,22 @@ export default function WebTvPage() {
     }, 8000);
     return () => clearInterval(id);
   }, [watch?.item.slug, watch?.item.is_live, watch?.detail?.playback_hls_url, playoutSlugs]);
+
+  // Après la fin d'un direct caméra, l'enregistrement se fait en arrière-plan
+  // (upload Cloudinary) : on re-poll tant que recording_status reste "pending"
+  // pour que video_url apparaisse dès qu'il est prêt, sans action de l'admin.
+  useEffect(() => {
+    if (!watch || watch.detail?.recording_status !== "pending") return;
+    const slug = watch.item.slug;
+    const id = setInterval(async () => {
+      try {
+        const d = await videosApi.get(slug);
+        setWatch((w) => (w && w.item.slug === slug ? { ...w, detail: d } : w));
+        if (d.recording_status !== "pending") fetchVideos();
+      } catch { /* on retentera au prochain tick */ }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [watch?.item.slug, watch?.detail?.recording_status, fetchVideos]);
 
   const copy = (v: string) => { navigator.clipboard.writeText(v); toast.success("Copié"); };
 
@@ -141,7 +173,7 @@ export default function WebTvPage() {
   const openEdit = async (item: VideoListItem) => {
     try {
       const d = await videosApi.get(item.slug);
-      const isCamera = d.video_url === CAMERA_PLACEHOLDER || cameraSlugs.has(item.slug);
+      const isCamera = d.broadcast_mode === "camera" || d.video_url === CAMERA_PLACEHOLDER || cameraSlugs.has(item.slug);
       setEditingSlug(item.slug);
       setMode(isCamera ? "camera" : "file");
       setForm({
@@ -175,7 +207,8 @@ export default function WebTvPage() {
       await videosApi.update(editingSlug, {
         title: form.title.trim(),
         category: form.category,
-        video_url: isCamera ? CAMERA_PLACEHOLDER : form.video_url.trim(),
+        broadcast_mode: isCamera ? "camera" : "playout",
+        video_url: isCamera ? undefined : form.video_url.trim(),
         description: form.description.trim() || undefined,
         duration: form.duration.trim() || undefined,
         location: form.location.trim() || undefined,
@@ -265,7 +298,8 @@ export default function WebTvPage() {
         title: form.title.trim(),
         category: form.category,
         // Direct caméra : pas de fichier → placeholder (le backend exige video_url).
-        video_url: isCamera ? CAMERA_PLACEHOLDER : form.video_url.trim(),
+        broadcast_mode: isCamera ? "camera" : "playout",
+        video_url: isCamera ? undefined : form.video_url.trim(),
         published_at: form.published_at
           ? new Date(form.published_at).toISOString()
           : new Date().toISOString(),
@@ -378,6 +412,8 @@ export default function WebTvPage() {
                   <img src={v.thumbnail_url} alt={v.title} loading="lazy" decoding="async" />
                 )}
                 {v.is_live && <span className="m-tag m-live"><span className="pulse" />LIVE</span>}
+                {!v.is_live && v.recording_status === "pending" && <span className="m-tag m-sched">Enregistrement…</span>}
+                {!v.is_live && v.recording_status === "failed" && <span className="m-tag" style={{ background: "var(--red-soft)", color: "var(--red)" }}>Échec enregistrement</span>}
                 <button className="m-play" onClick={() => handleWatch(v)}>
                   <div className="pb"><Play /></div>
                 </button>
@@ -425,6 +461,11 @@ export default function WebTvPage() {
                 <DialogTitle className="flex items-center gap-2">
                   {watch.item.is_live && <Badge className="bg-red-500 text-white">LIVE</Badge>}
                   {watch.item.title}
+                  {watch.item.is_live && onlineCount !== null && (
+                    <span className="ml-auto flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                      <Users className="h-3.5 w-3.5" />{onlineCount}
+                    </span>
+                  )}
                 </DialogTitle>
                 <DialogDescription>
                   {watch.item.is_live ? "Diffusion en direct." : "Lecture de la vidéo."}
@@ -438,7 +479,15 @@ export default function WebTvPage() {
                   const playout = playoutSlugs.has(watch.item.slug);
                   const camera = !playout && watch.detail.is_live && watch.detail.playback_hls_url;
                   const src = camera ? watch.detail.playback_hls_url! : (watch.detail.video_url ?? "");
-                  if (!src || src === CAMERA_PLACEHOLDER) return <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground"><Radio className="h-8 w-8 text-muted-foreground/40" />Direct caméra — pas encore démarré.<span className="text-xs">Utilise « Passer en direct (caméra) ».</span></div>;
+                  if (!src || src === CAMERA_PLACEHOLDER) {
+                    if (watch.detail.recording_status === "pending") {
+                      return <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />Enregistrement en cours de traitement…<span className="text-xs">Quelques secondes à ~1-2 minutes. Réouvre cette fenêtre pour vérifier.</span></div>;
+                    }
+                    if (watch.detail.recording_status === "failed") {
+                      return <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground"><Radio className="h-8 w-8 text-muted-foreground/40" />L&apos;enregistrement de ce direct a échoué.</div>;
+                    }
+                    return <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground"><Radio className="h-8 w-8 text-muted-foreground/40" />Direct caméra — pas encore démarré.<span className="text-xs">Utilise « Passer en direct (caméra) ».</span></div>;
+                  }
                   if (camera || src.includes(".m3u8")) {
                     return <HlsPlayer src={src} poster={watch.detail.thumbnail_url ?? undefined}
                       muted={watch.item.is_live}

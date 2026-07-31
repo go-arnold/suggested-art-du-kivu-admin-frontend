@@ -106,6 +106,22 @@ export default function LiveMusicPage() {
     return () => clearInterval(id);
   }, [watch?.slug, watch?.status, watch?.playback_hls_url]);
 
+  // Après la fin du direct, l'enregistrement se fait en arrière-plan : on
+  // re-poll tant que recording_status reste "pending" pour que audio_url
+  // apparaisse dès qu'il est prêt, sans action de l'admin.
+  useEffect(() => {
+    if (!watch || watch.recording_status !== "pending") return;
+    const slug = watch.slug;
+    const id = setInterval(async () => {
+      try {
+        const fresh = await liveMusicApi.sessions.get(slug);
+        setWatch((w) => (w && w.slug === slug ? fresh : w));
+        if (fresh.recording_status !== "pending") fetchSessions();
+      } catch { /* retentera */ }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [watch?.slug, watch?.recording_status, fetchSessions]);
+
   // ── Sessions handlers ──
   const openCreateS = () => { setEditS(null); setSForm({ title: "", status: "scheduled", artists: [], cover: "" }); setSOpen(true); };
   const openEditS = (s: MusicLiveSession) => { setEditS(s.slug); setSForm({ title: s.title ?? "", status: s.status, artists: [], cover: "" }); setSOpen(true); };
@@ -147,7 +163,7 @@ export default function LiveMusicPage() {
       toast.success("Session en direct");
       const creds = extractStreamCreds(res);
       if (creds) setLiveCreds({ title: s.title, ...creds });
-      else toast.warning("Direct démarré, mais les identifiants RTMPS n'ont pas été renvoyés (voir la console).");
+      else toast.warning("Direct démarré, mais les identifiants RTMP n'ont pas été renvoyés (voir la console).");
       console.log("go_live response (live-music):", res);
       fetchSessions();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur au démarrage"); }
@@ -157,7 +173,7 @@ export default function LiveMusicPage() {
     catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erreur à l'arrêt"); }
   };
   const shareSession = async (s: MusicLiveSession) => {
-    const link = s.playback_hls_url || "";
+    const link = s.playback_hls_url || s.audio_url || "";
     if (!link) { toast.error("Aucun lien de lecture"); return; }
     await navigator.clipboard.writeText(link); toast.success("Lien copié");
   };
@@ -266,7 +282,9 @@ export default function LiveMusicPage() {
                   <div className="m-cover">
                     {s.status === "live" && <span className="m-tag m-live"><span className="pulse" />LIVE</span>}
                     {s.status === "scheduled" && <span className="m-tag m-sched">Programmée</span>}
-                    {(s.status === "live" || (s.status === "ended" && s.playback_hls_url)) && (
+                    {s.status === "ended" && s.recording_status === "pending" && <span className="m-tag m-sched">Enregistrement…</span>}
+                    {s.status === "ended" && s.recording_status === "failed" && <span className="m-tag" style={{ background: "var(--red-soft)", color: "var(--red)" }}>Échec enregistrement</span>}
+                    {(s.status === "live" || (s.status === "ended" && (s.playback_hls_url || s.audio_url))) && (
                       <button className="m-play" onClick={() => setWatch(s)}>
                         <div className="pb"><Play /></div>
                       </button>
@@ -291,7 +309,7 @@ export default function LiveMusicPage() {
                           ) : (
                             <DropdownMenuItem onClick={() => goLive(s)}><Play className="mr-2 h-4 w-4" />Passer en direct</DropdownMenuItem>
                           )}
-                          {s.status === "ended" && s.playback_hls_url && (
+                          {s.status === "ended" && (s.playback_hls_url || s.audio_url) && (
                             <DropdownMenuItem onClick={() => setWatch(s)}><Eye className="mr-2 h-4 w-4" />Voir la rediffusion</DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => shareSession(s)}><Share2 className="mr-2 h-4 w-4" />Partager</DropdownMenuItem>
@@ -467,8 +485,17 @@ export default function LiveMusicPage() {
               <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
                 {watch.playback_hls_url ? (
                   <HlsPlayer src={watch.playback_hls_url} muted={watch.status === "live"} emptyLabel={watch.status === "live" ? "Le direct n'a pas encore démarré." : "Rediffusion indisponible."} />
+                ) : watch.audio_url ? (
+                  <div className="flex h-full items-center justify-center p-4">
+                    <audio src={watch.audio_url} controls autoPlay className="w-full" />
+                  </div>
+                ) : watch.recording_status === "pending" ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />
+                    Enregistrement en cours de traitement…
+                  </div>
                 ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Aucune source vidéo.</div>
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Aucune source audio.</div>
                 )}
               </div>
               <DialogFooter><Button onClick={() => setWatch(null)}>Fermer</Button></DialogFooter>
@@ -477,7 +504,7 @@ export default function LiveMusicPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Identifiants RTMPS */}
+      {/* Identifiants RTMP */}
       <Dialog open={!!liveCreds} onOpenChange={(o) => !o && setLiveCreds(null)}>
         <DialogContent className="sm:max-w-[560px]">
           {liveCreds && (

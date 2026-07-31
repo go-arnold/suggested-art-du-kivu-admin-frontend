@@ -4,7 +4,7 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Eye, Send, Upload, X, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Eye, Send, Upload, X, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import dynamic from "next/dynamic";
 import { articlesApi, usersApi, resolveTagIds, type ArticleCategory, type User } from "@/lib/api";
@@ -60,7 +60,28 @@ export default function ModifierArticlePage() {
   const [loadingData,   setLoadingData]   = useState(true);
   const [saving,      setSaving]      = useState(false);
 
+  const [catDialogOpen, setCatDialogOpen] = useState(false);
+  const [newCatName,    setNewCatName]    = useState("");
+  const [savingCat,     setSavingCat]     = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCreateCategory = async () => {
+    if (!newCatName.trim()) { toast.error("Le nom de la catégorie est obligatoire"); return; }
+    setSavingCat(true);
+    try {
+      const created = await articlesApi.createCategory({ name: newCatName.trim() });
+      setCategories((prev) => [...prev, created]);
+      setCategoryId(String(created.id));
+      toast.success("Catégorie créée");
+      setCatDialogOpen(false);
+      setNewCatName("");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la création de la catégorie");
+    } finally {
+      setSavingCat(false);
+    }
+  };
 
   // Load article + categories on mount
   useEffect(() => {
@@ -340,7 +361,13 @@ export default function ModifierArticlePage() {
 
           {/* Category — by ID */}
           <div className="panel p-6">
-            <h3 className="font-semibold mb-4">Catégorie</h3>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-semibold">Catégorie</h3>
+              <button type="button" onClick={() => setCatDialogOpen(true)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                <Plus className="h-3 w-3" />Créer une catégorie
+              </button>
+            </div>
             {loadingData ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                 <Loader2 className="h-4 w-4 animate-spin" />Chargement…
@@ -424,6 +451,30 @@ export default function ModifierArticlePage() {
               </div>
             )}
           </article>
+        </DialogContent>
+      </Dialog>
+
+      {/* Créer une catégorie */}
+      <Dialog open={catDialogOpen} onOpenChange={(o) => { if (!savingCat) setCatDialogOpen(o); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Nouvelle catégorie</DialogTitle>
+            <DialogDescription>Créez une catégorie d&apos;article et sélectionnez-la immédiatement.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>Nom *</Label>
+              <Input placeholder="Ex: Culture" value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateCategory(); } }} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={savingCat} onClick={() => setCatDialogOpen(false)}>Annuler</Button>
+            <Button disabled={savingCat} onClick={handleCreateCategory}>
+              {savingCat && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Créer
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </section>

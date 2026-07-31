@@ -17,7 +17,7 @@ interface HlsPlayerProps {
 }
 
 /**
- * Lecteur HLS (Cloudflare Stream) cross-navigateur.
+ * Lecteur HLS (MediaMTX) cross-navigateur.
  * Utilise hls.js quand disponible, sinon la lecture native (Safari).
  * Affiche un message clair si le flux est indisponible plutôt que de tourner
  * indéfiniment (cas d'un direct sans diffusion active / enregistrement absent).

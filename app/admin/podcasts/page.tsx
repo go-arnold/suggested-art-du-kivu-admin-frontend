@@ -24,7 +24,7 @@ import {
 import {
   podcastsApi, commentsApi, artistsApi,
   type PodcastSeriesList, type EpisodeList, type EpisodeWrite,
-  type PodcastSeriesWrite, type ArtistList,
+  type PodcastSeriesWrite, type ArtistList, type EpisodeGuest,
 } from "@/lib/api";
 import { ModerationDialog, commentToMod } from "@/components/admin/moderation-dialog";
 import { MediaUpload } from "@/components/admin/media-upload";
@@ -94,6 +94,15 @@ export default function PodcastsPage() {
     a.src = url;
     a.play().then(() => setPlayingId(ep.id)).catch(() => toast.error("Lecture impossible — réessaie"));
   };
+
+  // Lecture de l'audio porté directement par une série (podcast autonome, is_series=false).
+  const togglePlaySeries = (p: PodcastSeriesList) => {
+    const a = audioRef.current;
+    if (!a || !p.audio_url) return;
+    if (playingId === p.id) { a.pause(); setPlayingId(null); return; }
+    a.src = p.audio_url;
+    a.play().then(() => setPlayingId(p.id)).catch(() => toast.error("Lecture impossible — réessaie"));
+  };
   const [form, setForm] = useState(EMPTY_EP);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -116,7 +125,7 @@ export default function PodcastsPage() {
   const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
   const [seriesDialogOpen, setSeriesDialogOpen] = useState(false);
   const [savingSeries, setSavingSeries] = useState(false);
-  const EMPTY_SERIES = { title: "", category: "", description: "", cover: "", is_featured: false };
+  const EMPTY_SERIES = { title: "", category: "", description: "", cover: "", is_featured: false, audio_url: "", duration: "" };
   const [seriesForm, setSeriesForm] = useState(EMPTY_SERIES);
   const [editingSeriesSlug, setEditingSeriesSlug] = useState<string | null>(null);
 
@@ -160,6 +169,8 @@ export default function PodcastsPage() {
       description: p.description ?? "",
       cover: p.cover_url ?? "",
       is_featured: !!p.is_featured,
+      audio_url: p.audio_url ?? "",
+      duration: p.duration ?? "",
     });
     setSeriesDialogOpen(true);
   };
@@ -167,6 +178,10 @@ export default function PodcastsPage() {
   const handleSubmitSeries = async () => {
     if (!seriesForm.title.trim()) { toast.error("Le titre de la série est obligatoire"); return; }
     if (!seriesForm.category)     { toast.error("La catégorie est obligatoire"); return; }
+    if (seriesForm.audio_url.trim() && !isPlayableAudioUrl(seriesForm.audio_url)) {
+      toast.error("URL audio non compatible : téléversez le fichier ou collez un lien direct .mp3/.m4a.");
+      return;
+    }
     setSavingSeries(true);
     try {
       const payload: PodcastSeriesWrite = {
@@ -175,6 +190,8 @@ export default function PodcastsPage() {
         description: seriesForm.description.trim() || undefined,
         cover: seriesForm.cover || undefined,
         is_featured: seriesForm.is_featured,
+        audio_url: seriesForm.audio_url.trim() || undefined,
+        duration: seriesForm.duration.trim() || undefined,
       };
       if (editingSeriesSlug) {
         await podcastsApi.update(editingSeriesSlug, payload);
@@ -266,10 +283,8 @@ export default function PodcastsPage() {
       const guestIds: number[] = [];
       const guestNames: string[] = [];
       for (const g of d.guests ?? []) {
-        if (typeof g === "number") guestIds.push(g);
-        else if (typeof g === "string") guestNames.push(g);
-        else if (g && typeof g.id === "number") guestIds.push(g.id);
-        else if (g && g.name) guestNames.push(g.name);
+        if (g.artist_id) guestIds.push(g.artist_id);
+        else if (g.name) guestNames.push(g.name);
       }
       setForm((f) => ({ ...f, guests: guestIds, guestNames, transcript: d.transcript ?? "", audio_url: d.audio_url ?? f.audio_url }));
     }).catch(() => { /* on garde les valeurs de la liste */ });
@@ -284,8 +299,15 @@ export default function PodcastsPage() {
     }
     setSubmitting(true);
     try {
-      // Invités : IDs d'artistes + noms libres d'invités non-artistes.
-      const guests: (number | string)[] = [...form.guests, ...form.guestNames];
+      // Invités : format objet {name, artist_id?}. Artistes → lien via artist_id ;
+      // invités externes → simple nom libre.
+      const guests: EpisodeGuest[] = [
+        ...form.guests.map((id) => {
+          const a = artists.find((x) => x.id === id);
+          return { name: a?.name ?? `Artiste #${id}`, artist_id: id };
+        }),
+        ...form.guestNames.map((name) => ({ name })),
+      ];
       // Champs communs (création + édition)
       const common: Partial<EpisodeWrite> = {
         title: form.title.trim(),
@@ -461,12 +483,6 @@ export default function PodcastsPage() {
       {/* Séries */}
       {activeTab === "podcasts" && (
         <>
-          <div className="toolbar" style={{ justifyContent: "flex-end" }}>
-            <button className="btn btn-ghost" onClick={() => openCreateSeries}>
-              <Plus strokeWidth={2.2} />Nouvelle série
-            </button>
-          </div>
-
           {loadingPodcasts ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
               <Loader2 className="animate-spin" style={{ width: 32, height: 32, color: "var(--t3)" }} />
@@ -476,7 +492,7 @@ export default function PodcastsPage() {
               <div className="ph-ic"><Mic /></div>
               <h3>Aucune série</h3>
               <p>Créez une série (podcast) pour y rattacher vos épisodes.</p>
-              <button className="btn btn-red" onClick={() => openCreateSeries}>
+              <button className="btn btn-red" onClick={openCreateSeries}>
                 <Plus strokeWidth={2.2} />Créer une série
               </button>
             </div>
@@ -488,14 +504,23 @@ export default function PodcastsPage() {
                     style={{ cursor: "pointer" }} onClick={() => viewSeriesEpisodes(podcast)}>
                     {podcast.cover_url && <img src={podcast.cover_url} alt={podcast.title} loading="lazy" decoding="async" />}
                     {podcast.is_featured && <span className="m-tag m-sched">En vedette</span>}
+                    {podcast.is_series === false && podcast.audio_url && (
+                      <button className="m-play" onClick={(e) => { e.stopPropagation(); togglePlaySeries(podcast); }} aria-label="Lecture">
+                        <div className="pb">{playingId === podcast.id ? <Pause /> : <Play />}</div>
+                      </button>
+                    )}
                   </div>
                   <div className="m-body">
                     <div className="m-title">{podcast.title}</div>
                     <div className="m-series">{podcast.description}</div>
                     <div className="m-meta">
-                      <span className="mi" style={{ cursor: "pointer" }} onClick={() => viewSeriesEpisodes(podcast)}>
-                        <Headphones />{podcast.episode_count} épisodes
-                      </span>
+                      {podcast.is_series === false && podcast.audio_url ? (
+                        <span className="mi"><Clock />{podcast.duration || "Podcast autonome"}</span>
+                      ) : (
+                        <span className="mi" style={{ cursor: "pointer" }} onClick={() => viewSeriesEpisodes(podcast)}>
+                          <Headphones />{podcast.episode_count} épisodes
+                        </span>
+                      )}
                       <span className="mi" style={{ textTransform: "capitalize" }}>{podcast.category}</span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -532,7 +557,7 @@ export default function PodcastsPage() {
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
                 <Label>Série / Podcast</Label>
-                <button type="button" onClick={() => openCreateSeries}
+                <button type="button" onClick={openCreateSeries}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
                   <Plus className="h-3 w-3" />Nouvelle série
                 </button>
@@ -666,7 +691,7 @@ export default function PodcastsPage() {
 
       {/* Création d'une série / podcast */}
       <Dialog open={seriesDialogOpen} onOpenChange={(o) => { if (!savingSeries) setSeriesDialogOpen(o); }}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingSeriesSlug ? "Modifier la série" : "Nouvelle série"}</DialogTitle>
             <DialogDescription>
@@ -701,6 +726,28 @@ export default function PodcastsPage() {
               <Label>Description</Label>
               <Textarea placeholder="Décrivez cette série..." rows={3} value={seriesForm.description}
                 onChange={(e) => setSeriesForm({ ...seriesForm, description: e.target.value })} />
+            </div>
+            <div className="grid gap-2 rounded-lg border p-3">
+              <Label>Podcast autonome (optionnel)</Label>
+              <p className="text-xs text-muted-foreground">
+                Donnez un audio à la série elle-même pour l&apos;afficher comme un podcast jouable sans
+                épisode. Dès qu&apos;un 2<sup>e</sup> épisode est rattaché à la série, elle affiche la
+                liste d&apos;épisodes à la place (irréversible).
+              </p>
+              <MediaUpload
+                label="Fichier audio (upload)" context="podcast_audio" variant="audio" accept="audio/*"
+                value={seriesForm.audio_url || null} onChange={(url) => setSeriesForm({ ...seriesForm, audio_url: url ?? "" })}
+                onDuration={(d) => setSeriesForm((f) => ({ ...f, duration: d }))}
+              />
+              <Input type="url" placeholder="…ou coller une URL audio directe (.mp3, .m4a…)" value={seriesForm.audio_url}
+                onChange={(e) => setSeriesForm({ ...seriesForm, audio_url: e.target.value })} />
+              {seriesForm.audio_url.trim() && !isPlayableAudioUrl(seriesForm.audio_url) && (
+                <p className="text-xs text-destructive">
+                  Lien non lisible (page/embed) — téléversez le fichier ou collez un lien direct .mp3/.m4a.
+                </p>
+              )}
+              <Input placeholder="Durée (ex: 38:20)" maxLength={10} value={seriesForm.duration}
+                onChange={(e) => setSeriesForm({ ...seriesForm, duration: e.target.value })} />
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
